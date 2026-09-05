@@ -41,6 +41,11 @@ PRICE_TTL_HOURS = 20
 PTCGIO_IMG = "https://images.pokemontcg.io"
 VERSION = os.environ.get("APP_VERSION", "0.8.0-beta")
 
+# Cloudflare Web Analytics. Only needed for the manual setup (site not proxied,
+# e.g. hitting the onrender.com host directly). If the domain is orange-clouded,
+# Cloudflare injects the beacon itself and this can stay unset.
+CF_ANALYTICS_TOKEN = os.environ.get("CF_ANALYTICS_TOKEN", "")
+
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)  # Render + Cloudflare in front
 app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
@@ -1224,7 +1229,7 @@ def inject_nav():
 
 @app.context_processor
 def inject_version():
-    return {"VERSION": VERSION, "sv": static_v}
+    return {"VERSION": VERSION, "sv": static_v, "CF_TOKEN": CF_ANALYTICS_TOKEN}
 
 
 _SV_CACHE = {}

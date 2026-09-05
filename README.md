@@ -68,3 +68,19 @@ regardless of how many people hold it. New cards resolve on add; anything missed
 is picked up by `backfill_alt_images()` during the daily 06:00 refresh.
 
 Existing databases migrate automatically on boot (`ADD COLUMN IF NOT EXISTS`).
+
+## Analytics
+
+Cloudflare Web Analytics — free, cookieless, no consent banner needed.
+
+**If the domain is proxied through Cloudflare (orange cloud):** turn Web Analytics
+on in the dashboard and it injects the beacon itself. Leave `CF_ANALYTICS_TOKEN`
+unset.
+
+**If it is not proxied** (hitting the `onrender.com` host directly, or DNS-only):
+add a site in Web Analytics, copy the site token, and set it as
+`CF_ANALYTICS_TOKEN` in Render. The beacon renders only when that variable is
+present.
+
+Client-side navigation is handled automatically: the beacon patches the History
+API, so tab switches register as separate page views rather than one long visit.

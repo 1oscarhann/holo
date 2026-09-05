@@ -59,5 +59,9 @@
 })();
 </script>
 {% block script %}{% endblock %}
+{% if CF_TOKEN %}
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "{{ CF_TOKEN }}"}'></script>
+{% endif %}
 </body>
 </html>
