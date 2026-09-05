@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="search"><input id="q" type="search" placeholder="Search any card, e.g. Umbreon" autocomplete="off" autofocus></div>
+<div class="results" id="res"><div class="hint">Type a card name.<br>English sets, plus Japanese and Chinese where TCGdex has them.</div></div>
+
+<div class="sheet" id="sheet">
+  <div class="panel">
+    <div class="grip"></div>
+    <div class="head"><img id="s-img" alt=""><div><div class="n" id="s-name"></div><div class="m" id="s-meta"></div></div></div>
+    <div class="split">
+      <div class="field"><label>Quantity</label><input id="s-qty" type="number" min="1" value="1" inputmode="numeric"></div>
+      <div class="field"><label>Grade</label><select id="s-grade"><option value="">Raw</option><option>PSA 10</option><option>PSA 9</option><option>PSA 8</option><option>CGC 10</option><option>CGC 9.5</option><option>BGS 9.5</option><option>ACE 10</option></select></div>
+    </div>
+    <div class="split">
+      <div class="field"><label>Paid each (£)</label><input id="s-paid" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Optional"></div>
+      <div class="field"><label>Manual price (£)</label><input id="s-man" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Overrides market"></div>
+    </div>
+    <button class="btn" id="s-add">Add to collection</button>
+    <p class="tiny muted" style="margin-top:10px">Graded cards: set a manual price — market data is for raw copies.</p>
+  </div>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+let t, cur;
+q.oninput = () => { clearTimeout(t); t = setTimeout(search, 320); };
+async function search(){
+  const v = q.value.trim(); if (v.length < 2) return;
+  res.innerHTML = '<div class="hint">Searching…</div>';
+  const list = await api('/api/search?q=' + encodeURIComponent(v));
+  if (!list.length) { res.innerHTML = '<div class="hint">Nothing matched. Try the exact card name.</div>'; return; }
+  res.innerHTML = list.map(c => `<div class="row" data-id="${c.id}">
+    <img src="${c.img}" data-alts='${JSON.stringify(c.img_alts || [])}' onerror="holoImg(this)" loading="lazy" alt="">
+    <div class="t"><div class="n">${c.name}</div><div class="m">${c.set_id} · ${c.local_id ?? ''}</div></div></div>`).join('');
+  res.querySelectorAll('.row').forEach(r => r.onclick = () => open(list.find(c => c.id === r.dataset.id)));
+}
+function open(c){ cur = c;
+  const si = document.getElementById('s-img');
+  si.dataset.alts = JSON.stringify(c.img_hi_alts || []);
+  si.onerror = () => holoImg(si);
+  si.src = c.img_hi || c.img || '';
+  document.getElementById('s-name').textContent = c.name;
+  document.getElementById('s-meta').textContent = `${c.set_id} · ${c.local_id ?? ''}`;
+  sheet.classList.add('open');
+}
+sheet.onclick = e => { if (e.target === sheet) sheet.classList.remove('open'); };
+document.getElementById('s-add').onclick = async () => {
+  const b = document.getElementById('s-add'); b.disabled = true; b.textContent = 'Adding…';
+  const num = id => { const v = document.getElementById(id).value; return v === '' ? null : +v; };
+  try {
+    await api('/api/holdings','POST',{card_id: cur.id, qty: num('s-qty') || 1, paid: num('s-paid'), manual_gbp: num('s-man'), grade: document.getElementById('s-grade').value});
+    toast('Added ' + cur.name); sheet.classList.remove('open');
+  } catch(e){ toast(e.message); }
+  b.disabled = false; b.textContent = 'Add to collection';
+};
+</script>
+{% endblock %}

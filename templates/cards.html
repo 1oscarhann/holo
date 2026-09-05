@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="search"><input id="q" type="search" placeholder="Filter your cards" autocomplete="off"></div>
+<div class="list-actions"><button class="btn ghost" id="refresh">Refresh prices</button></div>
+<section class="sec" id="list">
+{% for c in cards %}
+<a class="row" href="/card/{{ c.hid }}" data-k="{{ (c.name ~ ' ' ~ c.set_name ~ ' ' ~ c.local_id)|lower }}">
+  <img {{ img_attrs(c) }} alt="">
+  <div class="t"><div class="n">{{ c.name }}</div><div class="m">{{ c.set_name }} · {{ c.local_id }}{% if c.rarity %} · {{ c.rarity }}{% endif %}{% if c.grade %} · {{ c.grade }}{% endif %}</div></div>
+  <div class="r"><div class="p num">£{{ '{:,.2f}'.format(c.value) }}</div>
+    <div class="c num {{ 'up' if c.chg7 and c.chg7 > 0 else ('down' if c.chg7 and c.chg7 < 0) }}">{% if c.qty > 1 %}×{{ c.qty }} · {% endif %}{% if c.chg7 is none %}—{% else %}{{ '+' if c.chg7 > 0 }}{{ '%.1f'|format(c.chg7) }}%{% endif %}</div></div>
+</a>
+{% else %}
+<div class="hint">No cards yet. Tap the + to add one.</div>
+{% endfor %}
+</section>
+{% endblock %}
+{% block script %}
+<script>
+q.oninput = () => { const v = q.value.toLowerCase(); document.querySelectorAll('#list .row').forEach(r => r.style.display = r.dataset.k.includes(v) ? '' : 'none'); };
+refresh.onclick = async () => { refresh.disabled = true; refresh.textContent = 'Refreshing…';
+  try { const r = await api('/api/refresh','POST'); toast(`Refreshed ${r.refreshed} of ${r.of}`); location.reload(); }
+  catch(e){ toast(e.message); refresh.disabled = false; refresh.textContent = 'Refresh prices'; } };
+</script>
+{% endblock %}

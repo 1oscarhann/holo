@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Log in' if mode=='login' else 'Create account' }} · Holo{% endblock %}
+{% block body %}
+<section class="auth">
+  <div class="brand">Holo</div>
+  <div class="sub">{{ 'Welcome back.' if mode=='login' else 'Track what your cards are actually worth.' }}</div>
+  {% if err %}<p class="err">{{ err }}</p>{% endif %}
+  <form method="post">
+    <div class="field"><label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" required></div>
+    <div class="field"><label for="p">Password</label><input id="p" name="password" type="password" autocomplete="{{ 'current-password' if mode=='login' else 'new-password' }}" required></div>
+    <button class="btn">{{ 'Log in' if mode=='login' else 'Create account' }}</button>
+  </form>
+  <p class="swap">{% if mode=='login' %}New here? <a href="/signup">Create an account</a>{% else %}Already have one? <a href="/login">Log in</a>{% endif %}</p>
+</section>
+{% endblock %}

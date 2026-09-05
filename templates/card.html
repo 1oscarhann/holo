@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ c.name }} · Holo{% endblock %}
+{% block body %}
+<a class="back" href="/cards">‹ Cards</a>
+<div class="cardhero">
+  <img {{ img_attrs(c, hi=True) }} alt="{{ c.name }}">
+  <div>
+    <div class="n">{{ c.name }}</div>
+    <div class="m">{{ c.set_name }} · {{ c.local_id }}{% if c.rarity %}<br>{{ c.rarity }}{% endif %}{% if c.grade %}<br>{{ c.grade }}{% endif %}</div>
+    <div class="p num">£{{ '{:,.2f}'.format(c.price or 0) }}<span>{% if c.manual_gbp is not none %}manual{% else %}each{% endif %}</span></div>
+  </div>
+</div>
+
+<div class="chips" style="margin-bottom:14px">
+  {% for l, v in [('24h', c.chg1), ('7d', c.chg7), ('30d', c.chg30)] %}
+  <span class="chip {{ 'flat' if v is none else ('up' if v > 0 else ('down' if v < 0 else 'flat')) }}">{{ l }} <b class="num">{% if v is none %}—{% else %}{{ '+' if v > 0 }}{{ '%.2f'|format(v) }}%{% endif %}</b></span>
+  {% endfor %}
+</div>
+<canvas class="spark" id="sp"></canvas>
+
+<div class="split">
+  <div class="field"><label>Quantity</label><input id="qty" type="number" min="1" value="{{ c.qty }}" inputmode="numeric"></div>
+  <div class="field"><label>Grade</label><input id="grade" value="{{ c.grade or '' }}" placeholder="Raw"></div>
+</div>
+<div class="split">
+  <div class="field"><label>Paid each (£)</label><input id="paid" type="number" step="0.01" value="{{ c.paid if c.paid is not none else '' }}" inputmode="decimal"></div>
+  <div class="field"><label>Manual price (£)</label><input id="man" type="number" step="0.01" value="{{ c.manual_gbp if c.manual_gbp is not none else '' }}" inputmode="decimal" placeholder="Use market"></div>
+</div>
+<div class="figs" style="margin-bottom:18px">
+  <div class="fig"><div class="k">Holding value</div><div class="v num">£{{ '{:,.2f}'.format(c.value) }}</div></div>
+  <div class="fig"><div class="k">Gain vs paid</div>
+    {% if c.paid %}{% set g = (c.price or 0) * c.qty - c.paid * c.qty %}<div class="v num {{ 'up' if g > 0 else ('down' if g < 0) }}">{{ '+' if g > 0 }}£{{ '{:,.2f}'.format(g|abs) }}</div>{% else %}<div class="v">—</div>{% endif %}
+  </div>
+</div>
+<section class="sec">
+  <h2>Alerts</h2>
+  {% for a in alerts %}
+  <div class="row">
+    <div class="t"><div class="n" style="font-weight:500">{{ a.label }}</div>
+      <div class="m">{% if a.fired %}Fired at £{{ '{:,.2f}'.format(a.fired_price) }} · {{ a.fired[:10] }}{% else %}Watching{% endif %}</div></div>
+    <button class="btn ghost" style="width:auto;padding:8px 12px;font-size:14px" data-del="{{ a.id }}">Remove</button>
+  </div>
+  {% endfor %}
+  <div class="split" style="margin-top:12px">
+    <div class="field"><label>Alert me when price</label>
+      <select id="a-kind"><option value="above">goes above £</option><option value="below">drops below £</option><option value="pct">moves ±% in a day</option></select></div>
+    <div class="field"><label>&nbsp;</label><input id="a-thr" type="number" step="0.01" min="0" inputmode="decimal" placeholder="e.g. 500"></div>
+  </div>
+  <button class="btn ghost" id="a-add">Add alert</button>
+  {% if not has_notify %}<p class="tiny muted" style="margin-top:8px">Set up notifications on the You tab or alerts only show here.</p>{% endif %}
+</section>
+
+<div class="split">
+  <button class="btn" id="save">Save changes</button>
+  <button class="btn danger" id="del">Remove</button>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+drawLine(document.getElementById('sp'), {{ c.history|tojson }}.map(h => ({y: h.gbp})));
+const num = id => { const v = document.getElementById(id).value; return v === '' ? null : +v; };
+save.onclick = async () => { try {
+  await api('/api/holdings/{{ c.hid }}','PATCH',{qty: num('qty') || 1, paid: num('paid'), manual_gbp: num('man'), grade: grade.value.trim() || null});
+  toast('Saved'); setTimeout(() => location.reload(), 400); } catch(e){ toast(e.message); } };
+document.getElementById('a-add').onclick = async () => {
+  const thr = document.getElementById('a-thr').value; if (!thr) return toast('Enter a number');
+  try { await api('/api/alerts','POST',{card_id: '{{ c.id }}', kind: document.getElementById('a-kind').value, threshold: +thr}); location.reload(); }
+  catch(e){ toast(e.message); } };
+document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { await api('/api/alerts/' + b.dataset.del,'DELETE'); location.reload(); });
+del.onclick = async () => { if (!confirm('Remove {{ c.name }} from your collection?')) return;
+  await api('/api/holdings/{{ c.hid }}','DELETE'); location.href = '/cards'; };
+</script>
+{% endblock %}

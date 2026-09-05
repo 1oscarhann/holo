@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block body %}
+{% macro list(items, empty) %}
+{% for c in items %}
+<a class="row" href="/card/{{ c.hid }}">
+  <img {{ img_attrs(c) }} alt="">
+  <div class="t"><div class="n">{{ c.name }}</div><div class="m">{{ c.set_name }} · {{ c.local_id }}</div></div>
+  <div class="r"><div class="p num {{ 'up' if c.chg7 > 0 else 'down' }}">{{ '+' if c.chg7 > 0 }}{{ '%.1f'|format(c.chg7) }}%</div><div class="c num">£{{ '{:,.2f}'.format(c.price) }}</div></div>
+</a>
+{% else %}<div class="hint">{{ empty }}</div>{% endfor %}
+{% endmacro %}
+<section class="sec" style="padding-top:26px"><h2>Up this week</h2>{{ list(s.gainers, 'Nothing moved up yet. Price history builds daily.') }}</section>
+<section class="sec"><h2>Down this week</h2>{{ list(s.losers, 'Nothing moved down. Nice.') }}</section>
+{% if alerts %}
+<section class="sec"><h2>Your alerts</h2>
+{% for a in alerts %}
+<a class="row" href="/card/{{ a.hid or '' }}" data-card="{{ a.card_id }}" style="{{ 'opacity:.55' if a.fired }}">
+  <img {{ img_attrs(a) }} alt="">
+  <div class="t"><div class="n">{{ a.name }}</div><div class="m">{{ a.label }}{% if a.fired %} · fired {{ a.fired[:10] }}{% endif %}</div></div>
+</a>
+{% endfor %}
+</section>
+{% endif %}
+{% if s.rarity %}
+<section class="sec"><h2>Value by rarity</h2>
+{% for r in s.rarity %}
+<div class="row" style="display:block">
+  <div style="display:flex;justify-content:space-between"><span style="font-weight:600">{{ r.rarity }}</span><span class="num" style="font-weight:600">£{{ '{:,.2f}'.format(r.value) }}</span></div>
+  <div class="bar"><i style="width:{{ (r.value / s.total * 100) if s.total else 0 }}%"></i></div>
+</div>
+{% endfor %}
+</section>
+{% endif %}
+{% endblock %}

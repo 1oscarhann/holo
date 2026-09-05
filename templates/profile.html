@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="hero" style="padding-bottom:10px">
+  <div class="who">Signed in as</div>
+  <div style="font-size:30px;font-weight:600;letter-spacing:-.02em;margin:4px 0 18px">{{ session.username }}</div>
+</section>
+<section class="sec">
+  <div class="figs">
+    <div class="fig"><div class="k">Collection value</div><div class="v num">£{{ '{:,.2f}'.format(s.total) }}</div></div>
+    <div class="fig"><div class="k">Total paid</div><div class="v num">{% if s.cost %}£{{ '{:,.2f}'.format(s.cost) }}{% else %}—{% endif %}</div></div>
+    <div class="fig"><div class="k">Cards</div><div class="v num">{{ s.cards }}</div></div>
+    <div class="fig"><div class="k">Sets</div><div class="v num">{{ s.sets|length }}</div></div>
+  </div>
+</section>
+<section class="sec">
+  <h2>Notifications</h2>
+  <p class="tiny muted" style="line-height:1.55;margin-bottom:14px">Alerts and the morning digest go to the <a href="https://ntfy.sh" style="text-decoration:underline">ntfy</a> app — install it, subscribe to a topic name nobody would guess, type it here. Or paste a Discord webhook.</p>
+  <div class="field"><label>ntfy topic</label><input id="n-topic" value="{{ u.ntfy_topic or '' }}" placeholder="e.g. holo-oscar-7f3k" autocapitalize="none"></div>
+  <div class="field"><label>Discord webhook</label><input id="n-hook" value="{{ u.discord_webhook or '' }}" placeholder="https://discord.com/api/webhooks/…" autocapitalize="none"></div>
+  <label class="row" style="border:0;padding:6px 0 14px;cursor:pointer"><input id="n-digest" type="checkbox" {{ 'checked' if u.digest }} style="width:20px;height:20px"><span>Morning digest — value, change and biggest mover, daily at 6am</span></label>
+  <div class="split"><button class="btn" id="n-save">Save</button><button class="btn ghost" id="n-test">Send test</button></div>
+  <button class="btn ghost" id="n-preview" style="margin-top:10px">Send me today's digest now</button>
+</section>
+<section class="sec">
+  <h2>Export</h2>
+  <div class="split" style="margin-bottom:10px"><a class="btn ghost" href="/export/cards.csv">Cards</a><a class="btn ghost" href="/export/history.csv">Value history</a></div>
+  <a class="btn ghost" href="/export/prices.csv">Price history per card</a>
+</section>
+<section class="sec">
+  <h2>Prices</h2>
+  <p class="tiny muted" style="line-height:1.55">Market prices come from Cardmarket (via TCGdex) converted to pounds, with TCGplayer as a fallback. They refresh every morning at 6am, or whenever you tap Refresh on the Cards tab. Graded cards need a manual price.</p>
+</section>
+<a class="btn ghost" href="/logout">Log out</a>
+{% endblock %}
+{% block script %}
+<script>
+const body = () => ({ntfy_topic: document.getElementById('n-topic').value, discord_webhook: document.getElementById('n-hook').value, digest: document.getElementById('n-digest').checked});
+document.getElementById('n-save').onclick = async () => { try { await api('/api/settings','POST',body()); toast('Saved'); } catch(e){ toast(e.message); } };
+document.getElementById('n-test').onclick = async () => { try { await api('/api/settings','POST',body()); const r = await api('/api/settings/test','POST'); toast(r.ok ? 'Sent — check your phone' : r.error); } catch(e){ toast(e.message); } };
+document.getElementById('n-preview').onclick = async () => { try { await api('/api/settings','POST',body()); await api('/api/digest/preview','POST'); toast('Digest sent'); } catch(e){ toast(e.message); } };
+</script>
+{% endblock %}

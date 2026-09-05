@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: holo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # ONE worker: the 6am scheduler thread must only exist once. Threads handle concurrency.
+    startCommand: gunicorn app:app --workers 1 --threads 8 --timeout 120
+    healthCheckPath: /login
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # paste your Neon pooled connection string in the Render dashboard
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      - key: EUR_GBP
+        value: "0.85"
+      - key: USD_GBP
+        value: "0.78"
+      - key: PYTHON_VERSION
+        value: "3.12"
