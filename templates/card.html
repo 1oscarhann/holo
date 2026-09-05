@@ -26,8 +26,8 @@
   <div class="field"><label>Grade</label><input id="grade" value="{{ c.grade or '' }}" placeholder="Raw"></div>
 </div>
 <div class="split">
-  <div class="field"><label>Paid each (£)</label><input id="paid" type="number" step="0.01" value="{{ c.paid if c.paid is not none else '' }}" inputmode="decimal"></div>
-  <div class="field"><label>Manual price (£)</label><input id="man" type="number" step="0.01" value="{{ c.manual_gbp if c.manual_gbp is not none else '' }}" inputmode="decimal" placeholder="Use market"></div>
+  <div class="field"><label>Paid each</label><div class="money"><input id="paid" type="number" step="0.01" value="{{ c.paid if c.paid is not none else '' }}" inputmode="decimal"></div></div>
+  <div class="field"><label>Manual price</label><div class="money"><input id="man" type="number" step="0.01" value="{{ c.manual_gbp if c.manual_gbp is not none else '' }}" inputmode="decimal" placeholder="Use market"></div></div>
 </div>
 <div class="figs" style="margin-bottom:18px">
   <div class="fig"><div class="k">Holding value</div><div class="v num">£{{ '{:,.2f}'.format(c.value) }}</div></div>
@@ -47,7 +47,7 @@
   <div class="split" style="margin-top:12px">
     <div class="field"><label>Alert me when price</label>
       <select id="a-kind"><option value="above">goes above £</option><option value="below">drops below £</option><option value="pct">moves ±% in a day</option></select></div>
-    <div class="field"><label>&nbsp;</label><input id="a-thr" type="number" step="0.01" min="0" inputmode="decimal" placeholder="e.g. 500"></div>
+    <div class="field"><label>&nbsp;</label><div class="money"><input id="a-thr" type="number" step="0.01" min="0" inputmode="decimal" placeholder="e.g. 500"></div></div>
   </div>
   <button class="btn ghost" id="a-add">Add alert</button>
   {% if not has_notify %}<p class="tiny muted" style="margin-top:8px">Set up notifications on the You tab or alerts only show here.</p>{% endif %}
@@ -61,7 +61,7 @@
 <div id="sellbox" class="sellbox" hidden>
   <h2>Log a sale</h2>
   <div class="frow">
-    <label>Sold for (£ each)<input id="s-price" type="number" step="0.01" inputmode="decimal"></label>
+    <label>Sold for (each)<div class="money"><input id="s-price" type="number" step="0.01" inputmode="decimal"></div></label>
     <label>Quantity<input id="s-qty" type="number" value="1" min="1" max="{{ c.qty }}"></label>
   </div>
   <div class="frow">

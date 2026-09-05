@@ -39,7 +39,7 @@ EUR_GBP = float(os.environ.get("EUR_GBP", "0.85"))
 USD_GBP = float(os.environ.get("USD_GBP", "0.78"))
 PRICE_TTL_HOURS = 20
 PTCGIO_IMG = "https://images.pokemontcg.io"
-VERSION = os.environ.get("APP_VERSION", "0.7.0-beta")
+VERSION = os.environ.get("APP_VERSION", "0.8.0-beta")
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)  # Render + Cloudflare in front
@@ -556,7 +556,7 @@ def add_page():
 @app.route("/movers")
 @login_required
 def movers_page():
-    return render_template("movers.html", s=stats(uid()), alerts=user_alerts(uid()), page="movers")
+    return render_template("movers.html", s=stats(uid()), alerts=user_alerts(uid()), page="market")
 
 
 @app.route("/profile")
@@ -993,7 +993,7 @@ def watchlist_page():
                     if r["price"] and r["prev"] else None)
         with_images(r)
     alerts = user_alerts(uid())
-    return render_template("watchlist.html", rows=rows, alerts=alerts, page="movers")
+    return render_template("watchlist.html", rows=rows, alerts=alerts, page="market")
 
 
 @app.route("/api/watchlist", methods=["POST", "DELETE"])
@@ -1036,7 +1036,7 @@ def sold_page():
     realised = sum(r["pnl"] or 0 for r in rows)
     return render_template("sold.html", rows=rows,
                            gross=sum(r["gross"] for r in rows),
-                           realised=realised, page="profile")
+                           realised=realised, page="cards")
 
 
 @app.route("/api/sales", methods=["POST"])
@@ -1191,12 +1191,59 @@ def market():
     m = market_movers()
     shown = {r["id"] for grp in ("gainers", "losers", "top") for r in m[grp]}
     return render_template("market.html", m=m, alltime=market_alltime(),
-                           spark=sparklines(list(shown)), page="movers")
+                           spark=sparklines(list(shown)), page="market")
+
+
+# One definition of the navigation, rendered by base.html. Previously each
+# template hand-wrote its own segmented control and they drifted out of sync —
+# the Movers tab listed two sections while Market listed three, so Watchlist
+# was only reachable after landing on Market first.
+TABS = [
+    ("portfolio", "Portfolio", "/",        [("Overview", "/"), ("Insights", "/insights")]),
+    ("cards",     "Cards",     "/cards",   [("Yours", "/cards"), ("Sets", "/sets"),
+                                            ("Sold", "/sold")]),
+    ("market",    "Market",    "/market",  [("Market", "/market"), ("Your movers", "/movers"),
+                                            ("Watchlist", "/watchlist")]),
+    ("profile",   "You",       "/profile", [("Settings", "/profile"), ("Import", "/import")]),
+]
+SUBNAV = {t[0]: t[3] for t in TABS}
+
+
+@app.context_processor
+def inject_nav():
+    # A section shows its sub-nav only when you're on one of its own pages.
+    # Detail views (a card, a set, the add sheet) get none — a sub-nav with
+    # nothing highlighted just looks broken.
+    sub = []
+    for items in SUBNAV.values():
+        if any(request.path == u for _, u in items):
+            sub = items
+            break
+    return {"TABS": TABS, "SUBNAV": sub, "HERE": request.path}
 
 
 @app.context_processor
 def inject_version():
-    return {"VERSION": VERSION}
+    return {"VERSION": VERSION, "sv": static_v}
+
+
+_SV_CACHE = {}
+
+
+def static_v(filename):
+    """Static URL with a content stamp: /static/app.js?v=<mtime>.
+
+    Static files are cached hard (a day in the browser, longer at the edge), so
+    without this a deploy would keep serving the previous build's JS and CSS and
+    the new code would silently never run.
+    """
+    if filename not in _SV_CACHE or app.debug:
+        try:
+            m = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+        except OSError:
+            m = 0
+        _SV_CACHE[filename] = m
+    return f"/static/{filename}?v={_SV_CACHE[filename]}"
 
 
 @app.route("/api/feedback", methods=["POST"])
@@ -1394,7 +1441,7 @@ def compare_page():
 @login_required
 def import_page():
     if request.method == "GET":
-        return render_template("import.html", page="cards")
+        return render_template("import.html", page="profile")
 
     text = (request.get_json(force=True) or {}).get("text", "")
     rows, added, failed = [], 0, []

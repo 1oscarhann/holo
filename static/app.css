@@ -344,3 +344,9 @@ textarea{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line)
 .ob-known b{color:var(--ink);font-weight:600}
 .ob-known a{color:var(--ink);text-decoration:underline}
 .verstamp{text-align:center;color:var(--ink3);font-size:11.5px;padding:22px 0 34px}
+
+/* ---- currency-prefixed inputs ------------------------------------------ */
+.money{position:relative}
+.money::before{content:'£';position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  color:var(--ink3);font-size:14px;pointer-events:none;z-index:1}
+.money input{padding-left:24px!important;width:100%}

@@ -1,11 +1,6 @@
 {% extends "base.html" %}
 {% block body %}
 
-<div class="seg">
-  <a href="/movers">Your cards</a>
-  <a href="/market" class="on">Market</a>
-  <a href="/watchlist">Watching</a>
-</div>
 
 {% macro list(items, empty, show_pct=True) %}
 {% for c in items %}

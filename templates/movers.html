@@ -1,9 +1,5 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="seg">
-  <a href="/movers" class="on">Your cards</a>
-  <a href="/market">Market</a>
-</div>
 {% macro list(items, empty) %}
 {% for c in items %}
 <a class="row" href="/card/{{ c.hid }}">
