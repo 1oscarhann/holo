@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block body %}
+
+<section class="setmast">
+  <div class="tiny muted">{{ meta.serie or 'Set' }}{% if meta.release %} · {{ meta.release[:4] }}{% endif %}</div>
+  <h1>{{ meta.name or set_id }}</h1>
+  <div class="setstats">
+    <div><b class="num">{{ n_owned }}<span class="of">/{{ n_total }}</span></b><span>Collected</span></div>
+    <div><b class="num">{{ pct }}%</b><span>Complete</span></div>
+    <div><b class="num">£{{ '{:,.0f}'.format(value) }}</b><span>Your value</span></div>
+  </div>
+  <div class="bar"><i style="width:{{ pct }}%"></i></div>
+</section>
+
+<section class="sec">
+  <h2>Every card <span class="tiny muted">{{ n_total - n_owned }} missing</span></h2>
+  <div class="grid">
+    {% for c in grid %}
+    <a class="cell {{ 'have' if c.owned else 'miss' }}"
+       href="{% if c.hid %}/card/{{ c.hid }}{% else %}/add?q={{ c.name|urlencode }}{% endif %}"
+       title="{{ c.name }} · {{ c.local_id }}">
+      <img {{ img_attrs(c) }} alt="{{ c.name }}">
+      <span class="no num">{{ c.local_id }}</span>
+      {% if c.watched and not c.owned %}<span class="star">★</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+{% endblock %}

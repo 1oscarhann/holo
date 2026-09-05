@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block body %}
+<div class="seg">
+  <a href="/movers" class="on">Your cards</a>
+  <a href="/market">Market</a>
+</div>
 {% macro list(items, empty) %}
 {% for c in items %}
 <a class="row" href="/card/{{ c.hid }}">
@@ -9,7 +13,7 @@
 </a>
 {% else %}<div class="hint">{{ empty }}</div>{% endfor %}
 {% endmacro %}
-<section class="sec" style="padding-top:26px"><h2>Up this week</h2>{{ list(s.gainers, 'Nothing moved up yet. Price history builds daily.') }}</section>
+<section class="sec" style="padding-top:22px"><h2>Up this week</h2>{{ list(s.gainers, 'Nothing moved up yet. Price history builds daily.') }}</section>
 <section class="sec"><h2>Down this week</h2>{{ list(s.losers, 'Nothing moved down. Nice.') }}</section>
 {% if alerts %}
 <section class="sec"><h2>Your alerts</h2>

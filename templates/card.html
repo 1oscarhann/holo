@@ -52,7 +52,21 @@
 
 <div class="split">
   <button class="btn" id="save">Save changes</button>
+  <button class="btn ghost" id="sell">Sell this</button>
   <button class="btn danger" id="del">Remove</button>
+
+<div id="sellbox" class="sellbox" hidden>
+  <h2>Log a sale</h2>
+  <div class="frow">
+    <label>Sold for (£ each)<input id="s-price" type="number" step="0.01" inputmode="decimal"></label>
+    <label>Quantity<input id="s-qty" type="number" value="1" min="1" max="{{ c.qty }}"></label>
+  </div>
+  <div class="frow">
+    <label>Date<input id="s-date" type="date"></label>
+    <label>Where<input id="s-venue" placeholder="Car boot, eBay…"></label>
+  </div>
+  <button class="btn" id="s-save">Log sale</button>
+</div>
 </div>
 {% endblock %}
 {% block script %}
@@ -69,5 +83,25 @@ document.getElementById('a-add').onclick = async () => {
 document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { await api('/api/alerts/' + b.dataset.del,'DELETE'); location.reload(); });
 del.onclick = async () => { if (!confirm('Remove {{ c.name }} from your collection?')) return;
   await api('/api/holdings/{{ c.hid }}','DELETE'); location.href = '/cards'; };
+
+const sb = document.getElementById('sellbox');
+document.getElementById('sell').onclick = () => {
+  sb.hidden = !sb.hidden;
+  if (!sb.hidden) {
+    document.getElementById('s-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('s-price').value = ({{ c.price or 0 }}).toFixed(2);
+    sb.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+};
+document.getElementById('s-save').onclick = async () => {
+  const sold = parseFloat(document.getElementById('s-price').value);
+  if (!(sold >= 0)) return toast('Enter what it sold for');
+  await api('/api/sales','POST',{
+    hid: {{ c.hid }}, sold,
+    qty: parseInt(document.getElementById('s-qty').value) || 1,
+    sold_on: document.getElementById('s-date').value || null,
+    venue: document.getElementById('s-venue').value.trim() || null});
+  location.href = '/sold';
+};
 </script>
 {% endblock %}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block body %}
+
+<div class="seg">
+  <a href="/movers">Your cards</a>
+  <a href="/market" class="on">Market</a>
+  <a href="/watchlist">Watching</a>
+</div>
+
+{% macro list(items, empty, show_pct=True) %}
+{% for c in items %}
+<div class="row">
+  <img {{ img_attrs(c) }} alt="">
+  <div class="t">
+    <div class="n">{{ c.name }}</div>
+    <div class="m">{{ c.set_name }} · {{ c.local_id }}</div>
+  </div>
+  <canvas class="spark" data-card="{{ c.id }}" width="58" height="26"></canvas>
+  <div class="r">
+    {% if show_pct and c.pct is not none %}
+    <div class="p num {{ 'up' if c.pct > 0 else ('down' if c.pct < 0 else '') }}">{{ '+' if c.pct > 0 }}{{ '%.1f'|format(c.pct) }}%</div>
+    {% endif %}
+    <div class="c num">£{{ '{:,.2f}'.format(c.price) }}</div>
+  </div>
+</div>
+{% else %}<div class="hint">{{ empty }}</div>{% endfor %}
+{% endmacro %}
+
+{% if not m.count %}
+<div class="hint" style="margin-top:30px">
+  The market watchlist hasn't been priced yet.<br>
+  It fills in at the next 6am refresh.
+</div>
+{% else %}
+
+{% if not m.has_history %}
+<div class="hint" style="margin-top:24px;margin-bottom:26px">
+  Tracking {{ m.count }} chase cards. Movements appear after tomorrow's refresh.
+</div>
+{% endif %}
+
+{% if m.has_history %}
+<section class="sec" style="padding-top:22px"><h2>Market gainers <span class="tiny muted">24h</span></h2>
+  {{ list(m.gainers, 'Nothing up today.') }}</section>
+<section class="sec"><h2>Market losers <span class="tiny muted">24h</span></h2>
+  {{ list(m.losers, 'Nothing down today.') }}</section>
+{% endif %}
+
+<section class="sec"><h2>Most valuable <span class="tiny muted">{{ m.count }} tracked</span></h2>
+  {{ list(m.top, 'Nothing priced yet.', show_pct=False) }}</section>
+
+{% if alltime.risen %}
+<section class="sec"><h2>Up most from their low <span class="tiny muted">all time</span></h2>
+{% for c in alltime.risen %}
+<div class="row">
+  <img {{ img_attrs(c) }} alt="">
+  <div class="t"><div class="n">{{ c.name }}</div>
+    <div class="m">low £{{ '{:,.2f}'.format(c.lo) }} · {{ c.days }} days tracked</div></div>
+  <div class="r"><div class="p num up">+{{ '%.0f'|format(c.from_low) }}%</div>
+    <div class="c num">£{{ '{:,.2f}'.format(c.price) }}</div></div>
+</div>
+{% endfor %}
+</section>
+<section class="sec"><h2>Down most from their peak <span class="tiny muted">all time</span></h2>
+{% for c in alltime.fallen %}
+<div class="row">
+  <img {{ img_attrs(c) }} alt="">
+  <div class="t"><div class="n">{{ c.name }}</div>
+    <div class="m">peak £{{ '{:,.2f}'.format(c.hi) }} · {{ c.days }} days tracked</div></div>
+  <div class="r"><div class="p num down">{{ '%.0f'|format(c.from_high) }}%</div>
+    <div class="c num">£{{ '{:,.2f}'.format(c.price) }}</div></div>
+</div>
+{% endfor %}
+</section>
+{% endif %}
+
+<div class="hint tiny" style="margin-bottom:30px">
+  A watchlist of secret rares from the 16 most recent sets, priced daily.
+  Not your collection — tap Your cards for that.
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block script %}
+<script>
+const spark = {{ spark|tojson }};
+document.querySelectorAll('canvas.spark').forEach(cv => {
+  const d = spark[cv.dataset.card];
+  if (!d || d.length < 4) { cv.style.display = 'none'; return; }
+  const r = window.devicePixelRatio || 1, w = cv.width, h = cv.height;
+  cv.width = w * r; cv.height = h * r;
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  const x = cv.getContext('2d'); x.scale(r, r);
+  const lo = Math.min(...d), hi = Math.max(...d), span = (hi - lo) || 1;
+  const px = i => (i / (d.length - 1)) * (w - 2) + 1;
+  const py = v => h - 3 - ((v - lo) / span) * (h - 6);
+  x.beginPath();
+  d.forEach((v, i) => i ? x.lineTo(px(i), py(v)) : x.moveTo(px(i), py(v)));
+  const up = d[d.length - 1] >= d[0];
+  x.strokeStyle = getComputedStyle(document.documentElement)
+    .getPropertyValue(up ? '--up' : '--down').trim();
+  x.lineWidth = 1.5; x.lineJoin = 'round'; x.stroke();
+});
+</script>
+{% endblock %}

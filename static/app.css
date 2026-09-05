@@ -159,3 +159,57 @@ button,input,select{font:inherit;color:inherit}
 
 /* image that exhausted every fallback (shouldn't happen — placeholder is last) */
 img.img-dead { visibility: hidden; }
+
+/* ---- first-run state --------------------------------------------------- */
+.onboard{padding:60px 22px 40px;text-align:center}
+.onboard .ob-mark{font-size:34px;color:var(--ink3);margin-bottom:20px}
+.onboard h1{font-size:30px;margin:0 0 12px;letter-spacing:-.5px}
+.onboard p{color:var(--ink2);line-height:1.55;margin:0 auto 28px;max-width:21em}
+.onboard .btn.primary{display:inline-block;padding:14px 28px;border-radius:12px;
+  background:var(--paper);color:var(--bg);font-weight:600;border:none}
+.ob-steps{margin:40px auto 0;max-width:22em;text-align:left;display:grid;gap:16px}
+.ob-steps div{color:var(--ink2);font-size:15px;display:flex;gap:12px;align-items:baseline}
+.ob-steps b{flex:none;width:22px;height:22px;border-radius:50%;background:var(--bg2);
+  border:1px solid var(--line);color:var(--ink);font-size:12px;font-weight:600;
+  display:inline-flex;align-items:center;justify-content:center}
+.ob-tip{margin-top:34px;color:var(--ink3);font-size:13px}
+.ob-tip i{font-style:normal;color:var(--ink2)}
+
+/* ---- segmented control (Your cards / Market) --------------------------- */
+.seg{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--line);
+  border-radius:11px;padding:4px;margin:22px 0 4px}
+.seg a{flex:1;text-align:center;padding:9px 0;border-radius:8px;font-size:14.5px;
+  font-weight:500;color:var(--ink2)}
+.seg a.on{background:var(--paper);color:var(--bg);font-weight:600}
+.tiny.muted,.sec h2 .tiny{color:var(--ink3);font-weight:400;font-size:12.5px}
+
+/* ---- set page + completion grid ---------------------------------------- */
+.setmast{padding:26px 0 4px}
+.setmast h1{font-size:27px;letter-spacing:-.4px;margin:4px 0 16px}
+.setstats{display:flex;gap:26px;margin-bottom:14px}
+.setstats b{display:block;font-size:21px;font-weight:600}
+.setstats .of{font-size:14px;color:var(--ink3);font-weight:400}
+.setstats span{color:var(--ink2);font-size:12.5px}
+.bar{height:4px;border-radius:3px;background:var(--bg2);overflow:hidden;margin-bottom:26px}
+.bar i{display:block;height:100%;background:var(--paper)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px}
+.cell{position:relative;display:block;border-radius:5px;overflow:hidden;background:var(--bg2);
+  aspect-ratio:245/342}
+.cell img{width:100%;height:100%;object-fit:cover;display:block}
+.cell.miss img{filter:grayscale(1) brightness(.22) contrast(.85)}
+.cell.miss{opacity:.7}
+.cell.have{outline:2px solid var(--paper);outline-offset:-2px;
+  box-shadow:0 0 0 3px rgba(242,240,234,.14)}
+.cell .no{position:absolute;left:0;bottom:0;right:0;padding:2px 4px;font-size:9.5px;
+  background:linear-gradient(transparent,rgba(0,0,0,.82));color:var(--ink2);text-align:right}
+.cell.have .no{color:var(--ink)}
+.cell .star{position:absolute;top:3px;right:4px;font-size:11px;color:var(--paper)}
+.spark{flex:none;margin:0 8px;opacity:.85}
+.row .t{min-width:0}
+.row .unwatch{background:none;border:0;color:var(--ink2);font-size:17px;padding:0 2px;cursor:pointer}
+.sellbox{margin:18px 0 26px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--bg2)}
+.sellbox h2{font-size:15px;font-weight:600;margin-bottom:12px}
+.sellbox .frow{display:flex;gap:10px;margin-bottom:10px}
+.sellbox label{flex:1;font-size:12.5px;color:var(--ink2);display:block}
+.sellbox input{width:100%;margin-top:5px;padding:10px;border-radius:8px;
+  border:1px solid var(--line);background:var(--bg)}

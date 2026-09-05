@@ -31,7 +31,10 @@ async function search(){
   if (!list.length) { res.innerHTML = '<div class="hint">Nothing matched. Try the exact card name.</div>'; return; }
   res.innerHTML = list.map(c => `<div class="row" data-id="${c.id}">
     <img src="${c.img}" data-alts='${JSON.stringify(c.img_alts || [])}' onerror="holoImg(this)" loading="lazy" alt="">
-    <div class="t"><div class="n">${c.name}</div><div class="m">${c.set_id} · ${c.local_id ?? ''}</div></div></div>`).join('');
+    <div class="t"><div class="n">${c.name}</div>
+      <div class="m">${c.set_name}${c.set_abbr ? ' · ' + c.set_abbr : ''} · ${c.local_id ?? ''}${c.set_total ? '/' + c.set_total : ''}</div>
+      <div class="m tiny">${c.release ? c.release.slice(0,4) : ''}</div></div>
+    <div class="c num">${c.price != null ? '£' + c.price.toFixed(2) : ''}</div></div>`).join('');
   res.querySelectorAll('.row').forEach(r => r.onclick = () => open(list.find(c => c.id === r.dataset.id)));
 }
 function open(c){ cur = c;

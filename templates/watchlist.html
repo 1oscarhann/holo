@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="seg">
+  <a href="/movers">Your cards</a>
+  <a href="/market">Market</a>
+  <a href="/watchlist" class="on">Watching</a>
+</div>
+
+<section class="sec" style="padding-top:22px">
+  <h2>Watchlist <span class="tiny muted">{{ rows|length }}</span></h2>
+  {% for c in rows %}
+  <div class="row">
+    <img {{ img_attrs(c) }} alt="">
+    <div class="t"><div class="n">{{ c.name }}</div>
+      <div class="m">{{ c.set_name or c.set_id }} · {{ c.local_id }}</div></div>
+    <div class="r">
+      {% if c.pct is not none %}
+      <div class="p num {{ 'up' if c.pct > 0 else ('down' if c.pct < 0) }}">{{ '+' if c.pct > 0 }}{{ '%.1f'|format(c.pct) }}%</div>
+      {% endif %}
+      <div class="c num">{% if c.price %}£{{ '{:,.2f}'.format(c.price) }}{% else %}—{% endif %}</div>
+    </div>
+    <button class="unwatch" data-card="{{ c.card_id }}" aria-label="Stop watching">★</button>
+  </div>
+  {% else %}
+  <div class="hint">Nothing on your watchlist yet.<br>
+    Star a card from a set page or search to track it without owning it.</div>
+  {% endfor %}
+</section>
+{% endblock %}
+
+{% block script %}
+<script>
+document.querySelectorAll('.unwatch').forEach(b => b.onclick = async () => {
+  await api('/api/watchlist', 'DELETE', {card_id: b.dataset.card});
+  b.closest('.row').remove();
+  toast('Removed from watchlist');
+});
+</script>
+{% endblock %}

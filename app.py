@@ -56,11 +56,22 @@ app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
 # Nothing is downloaded or cached server-side; these are just URLs the browser
 # fetches directly. The stepping between them happens client-side in app.js.
 
-try:
-    with open(os.path.join(os.path.dirname(__file__), "setmap.json")) as _f:
-        SETMAP = json.load(_f)
-except (OSError, ValueError):
-    SETMAP = {}
+def _load(fn, default):
+    try:
+        with open(os.path.join(os.path.dirname(__file__), fn)) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+SETMAP = _load("setmap.json", {})   # tcgdex set id -> pokemontcg.io set id
+SETS = _load("sets.json", {})       # tcgdex set id -> name / abbr / release / total
+MARKET = _load("market.json", [])   # curated chase-card watchlist, priced daily
+MARKET_IDS = [c["id"] for c in MARKET]
+
+
+def set_meta(set_id):
+    return SETS.get(set_id) or {}
 
 
 def ptcgio_url(set_id, local_id, hi=False):
@@ -200,6 +211,28 @@ CREATE TABLE IF NOT EXISTS alerts (
   id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   card_id TEXT REFERENCES cards(id), kind TEXT NOT NULL, threshold REAL NOT NULL,
   created TIMESTAMPTZ DEFAULT now(), fired TIMESTAMPTZ, fired_price REAL);
+
+-- cards you don't own but want to watch. Alerts work on these too.
+CREATE TABLE IF NOT EXISTS watchlist (
+  id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  card_id TEXT REFERENCES cards(id), added TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (user_id, card_id));
+
+-- disposals. Paper value is not the same as money made.
+CREATE TABLE IF NOT EXISTS sales (
+  id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  card_id TEXT REFERENCES cards(id), qty INTEGER NOT NULL DEFAULT 1,
+  sold REAL NOT NULL, paid REAL, sold_on DATE NOT NULL DEFAULT CURRENT_DATE,
+  venue TEXT, note TEXT, created TIMESTAMPTZ DEFAULT now());
+
+-- every card in a set, so the completion grid works without a live API call
+CREATE TABLE IF NOT EXISTS set_cards (
+  set_id TEXT, card_id TEXT, local_id TEXT, name TEXT, image TEXT,
+  sort_n INTEGER, fetched TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (set_id, card_id));
+CREATE INDEX IF NOT EXISTS set_cards_set ON set_cards (set_id, sort_n);
+CREATE INDEX IF NOT EXISTS watchlist_user ON watchlist (user_id);
+CREATE INDEX IF NOT EXISTS sales_user ON sales (user_id, sold_on DESC);
 """
 
 
@@ -486,7 +519,8 @@ def stats(user_id):
 @app.route("/")
 @login_required
 def index():
-    return render_template("index.html", s=stats(uid()), page="portfolio")
+    return render_template("index.html", s=stats(uid()),
+                           activity=recent_activity(uid(), 8), page="portfolio")
 
 
 @app.route("/cards")
@@ -527,6 +561,38 @@ def card_page(hid):
 # -------------------------------------------------------------------------- api
 
 
+# Digital-only: TCG Pocket cards do not physically exist, so they have no place
+# in a portfolio of real cardboard. Filtered out of search entirely.
+DIGITAL_SERIES = {"Pok\u00e9mon TCG Pocket"}
+
+# Real cards, but rarely what someone means when they search a Pokemon's name.
+NOVELTY_SERIES = {"Trainer kits", "McDonald's Collection", "POP"}
+
+
+def rank_key(card, q):
+    """Sort key for search results. Lower sorts first.
+
+    TCGdex returns matches in no useful order, so 'pika' led with a 2020 futsal
+    promo and a trainer-kit Raichu. Rank on name match, demote novelty sets,
+    then newest first — which is what people are usually pulling out of a pack.
+    """
+    name = (card.get("name") or "").lower()
+    meta = set_meta(card.get("set_id", ""))
+    # exact and prefix share a tier, so "Umbreon ex" isn't buried under every
+    # plain Umbreon ever printed
+    if name == q or name.startswith(q):
+        tier = 0
+    elif f" {q}" in name:
+        tier = 1
+    else:
+        tier = 2
+    if meta.get("serie") in NOVELTY_SERIES:
+        tier += 3
+    # newest first: negate the date so it sorts ascending with everything else
+    rel = meta.get("release") or "0000-00-00"
+    return (tier, [-int(x) for x in rel.replace("-", " ").split()], name)
+
+
 @app.route("/api/search")
 @login_required
 def api_search():
@@ -534,11 +600,41 @@ def api_search():
     if len(q) < 2:
         return jsonify([])
     res = tcgdex("cards", name=q) or []
-    out = []
-    for c in res[:40]:
-        out.append(with_images({
+
+    cards = []
+    for c in res:
+        set_id = c["id"].rsplit("-", 1)[0]
+        meta = set_meta(set_id)
+        if meta.get("serie") in DIGITAL_SERIES:
+            continue
+        cards.append({
             "id": c["id"], "name": c.get("name"), "local_id": c.get("localId"),
-            "image": c.get("image"), "set_id": c["id"].rsplit("-", 1)[0]}))
+            "image": c.get("image"), "set_id": set_id,
+            "set_name": meta.get("name") or set_id,
+            "set_abbr": meta.get("abbr"),
+            "release": meta.get("release"),
+            "set_total": meta.get("total"),
+        })
+
+    ql = q.lower()
+    cards.sort(key=lambda c: rank_key(c, ql))
+    cards = cards[:40]
+
+    # Attach any price we already have cached. Deliberately cache-only: looking
+    # up 40 live prices per keystroke would be slow and hammer the API.
+    ids = [c["id"] for c in cards]
+    prices = {}
+    if ids:
+        rows = db().execute("""
+            SELECT DISTINCT ON (card_id) card_id, gbp
+            FROM prices WHERE card_id = ANY(%s)
+            ORDER BY card_id, day DESC""", (ids,)).fetchall()
+        prices = {r["card_id"]: r["gbp"] for r in rows}
+
+    out = []
+    for c in cards:
+        c["price"] = float(prices[c["id"]]) if prices.get(c["id"]) is not None else None
+        out.append(with_images(c))
     return jsonify(out)
 
 
@@ -801,6 +897,284 @@ def send_digest(user, conn, alert_msgs=()):
     notify(user, "Morning, here's your binder", "\n".join(lines))
 
 
+# ------------------------------------------------------------------ set pages
+
+
+def set_catalogue(set_id, conn=None):
+    """Every card in a set, cached locally so the grid needs no live API call."""
+    c = conn or db()
+    rows = c.execute(
+        "SELECT * FROM set_cards WHERE set_id=%s ORDER BY sort_n, local_id", (set_id,)).fetchall()
+    if rows:
+        return rows
+    data = tcgdex(f"sets/{set_id}")
+    if not data:
+        return []
+    for card in data.get("cards") or []:
+        try:
+            n = int(str(card.get("localId")))
+        except (TypeError, ValueError):
+            n = 99999                      # promos, TG/GG subsets: sort last
+        c.execute("""INSERT INTO set_cards (set_id,card_id,local_id,name,image,sort_n)
+                     VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                  (set_id, card["id"], card.get("localId"), card.get("name"),
+                   card.get("image"), n))
+    c.commit()
+    return c.execute(
+        "SELECT * FROM set_cards WHERE set_id=%s ORDER BY sort_n, local_id", (set_id,)).fetchall()
+
+
+@app.route("/set/<set_id>")
+@login_required
+def set_page(set_id):
+    meta = set_meta(set_id)
+    cards = set_catalogue(set_id)
+    owned = {r["card_id"]: r for r in db().execute("""
+        SELECT h.card_id, h.id AS hid, SUM(h.qty) AS qty
+        FROM holdings h WHERE h.user_id=%s GROUP BY h.card_id, h.id""", (uid(),)).fetchall()}
+    watched = {r["card_id"] for r in db().execute(
+        "SELECT card_id FROM watchlist WHERE user_id=%s", (uid(),)).fetchall()}
+    prices = {r["card_id"]: r["gbp"] for r in db().execute("""
+        SELECT DISTINCT ON (card_id) card_id, gbp FROM prices
+        WHERE card_id = ANY(%s) ORDER BY card_id, day DESC""",
+        ([c["card_id"] for c in cards],)).fetchall()} if cards else {}
+
+    grid = []
+    for c in cards:
+        d = dict(c, id=c["card_id"], set_id=set_id)
+        d["owned"] = c["card_id"] in owned
+        d["hid"] = owned.get(c["card_id"], {}).get("hid")
+        d["watched"] = c["card_id"] in watched
+        d["price"] = prices.get(c["card_id"])
+        grid.append(with_images(d))
+
+    n_owned = sum(1 for g in grid if g["owned"])
+    return render_template("set.html", set_id=set_id, meta=meta, grid=grid,
+                           n_owned=n_owned, n_total=len(grid),
+                           pct=round(n_owned / len(grid) * 100) if grid else 0,
+                           value=sum(g["price"] or 0 for g in grid if g["owned"]),
+                           page="cards")
+
+
+# ------------------------------------------------------------------- watchlist
+
+
+@app.route("/watchlist")
+@login_required
+def watchlist_page():
+    rows = db().execute("""
+        SELECT w.card_id, w.added, c.name, c.set_id, c.local_id, c.image, c.alt_image,
+               c.set_name,
+               (SELECT gbp FROM prices p WHERE p.card_id=w.card_id ORDER BY day DESC LIMIT 1) AS price,
+               (SELECT gbp FROM prices p WHERE p.card_id=w.card_id ORDER BY day DESC OFFSET 1 LIMIT 1) AS prev
+        FROM watchlist w JOIN cards c ON c.id=w.card_id
+        WHERE w.user_id=%s ORDER BY w.added DESC""", (uid(),)).fetchall()
+    for r in rows:
+        r["pct"] = ((r["price"] - r["prev"]) / r["prev"] * 100
+                    if r["price"] and r["prev"] else None)
+        with_images(r)
+    alerts = user_alerts(uid())
+    return render_template("watchlist.html", rows=rows, alerts=alerts, page="movers")
+
+
+@app.route("/api/watchlist", methods=["POST", "DELETE"])
+@login_required
+def api_watchlist():
+    card_id = (request.get_json(force=True) or {}).get("card_id")
+    if not card_id:
+        return jsonify(error="card_id required"), 400
+    if request.method == "DELETE":
+        db().execute("DELETE FROM watchlist WHERE user_id=%s AND card_id=%s", (uid(), card_id))
+        db().commit()
+        return jsonify(watched=False)
+    if not db().execute("SELECT 1 FROM cards WHERE id=%s", (card_id,)).fetchone():
+        card = tcgdex(f"cards/{card_id}")
+        if not card:
+            return jsonify(error="Card not found."), 404
+        upsert_card(card)
+    db().execute("""INSERT INTO watchlist (user_id, card_id) VALUES (%s,%s)
+                    ON CONFLICT DO NOTHING""", (uid(), card_id))
+    db().commit()
+    refresh_price(card_id)
+    return jsonify(watched=True)
+
+
+# -------------------------------------------------------------------- sold log
+
+
+@app.route("/sold")
+@login_required
+def sold_page():
+    rows = db().execute("""
+        SELECT s.*, c.name, c.set_id, c.local_id, c.image, c.alt_image, c.set_name
+        FROM sales s JOIN cards c ON c.id=s.card_id
+        WHERE s.user_id=%s ORDER BY s.sold_on DESC, s.id DESC""", (uid(),)).fetchall()
+    for r in rows:
+        r["gross"] = (r["sold"] or 0) * (r["qty"] or 1)
+        r["cost"] = (r["paid"] or 0) * (r["qty"] or 1)
+        r["pnl"] = r["gross"] - r["cost"] if r["paid"] is not None else None
+        with_images(r)
+    realised = sum(r["pnl"] or 0 for r in rows)
+    return render_template("sold.html", rows=rows,
+                           gross=sum(r["gross"] for r in rows),
+                           realised=realised, page="profile")
+
+
+@app.route("/api/sales", methods=["POST"])
+@login_required
+def api_sales():
+    d = request.get_json(force=True)
+    hid = d.get("hid")
+    row = db().execute("SELECT * FROM holdings WHERE id=%s AND user_id=%s",
+                       (hid, uid())).fetchone() if hid else None
+    if not row:
+        return jsonify(error="Holding not found."), 404
+    qty = max(1, min(int(d.get("qty") or 1), row["qty"]))
+    db().execute("""INSERT INTO sales (user_id,card_id,qty,sold,paid,sold_on,venue,note)
+                    VALUES (%s,%s,%s,%s,%s,COALESCE(%s,CURRENT_DATE),%s,%s)""",
+                 (uid(), row["card_id"], qty, float(d.get("sold") or 0),
+                  row["paid"], d.get("sold_on") or None, d.get("venue"), d.get("note")))
+    if qty >= row["qty"]:
+        db().execute("DELETE FROM holdings WHERE id=%s", (hid,))
+    else:
+        db().execute("UPDATE holdings SET qty=qty-%s WHERE id=%s", (qty, hid))
+    db().commit()
+    return jsonify(ok=True)
+
+
+# --------------------------------------------------------------- activity feed
+
+
+def recent_activity(user_id, limit=25):
+    """Adds and sales interleaved, newest first."""
+    adds = db().execute("""
+        SELECT 'add' AS kind, h.added AS at, h.qty, h.paid, NULL::real AS sold,
+               c.id AS card_id, c.name, c.set_name, c.set_id, c.local_id,
+               c.image, c.alt_image, h.id AS hid
+        FROM holdings h JOIN cards c ON c.id=h.card_id
+        WHERE h.user_id=%s ORDER BY h.added DESC LIMIT %s""", (user_id, limit)).fetchall()
+    sells = db().execute("""
+        SELECT 'sold' AS kind, s.created AS at, s.qty, s.paid, s.sold,
+               c.id AS card_id, c.name, c.set_name, c.set_id, c.local_id,
+               c.image, c.alt_image, NULL::int AS hid
+        FROM sales s JOIN cards c ON c.id=s.card_id
+        WHERE s.user_id=%s ORDER BY s.created DESC LIMIT %s""", (user_id, limit)).fetchall()
+    out = sorted(adds + sells, key=lambda r: r["at"], reverse=True)[:limit]
+    for r in out:
+        with_images(r)
+    return out
+
+
+# ----------------------------------------------------------- all-time extremes
+
+
+def market_alltime(limit=10):
+    """Biggest move from each card's own low/high, across all recorded history."""
+    rows = db().execute("""
+        WITH agg AS (
+          SELECT card_id, MIN(gbp) AS lo, MAX(gbp) AS hi, COUNT(*) AS days
+          FROM prices WHERE card_id = ANY(%s) AND gbp IS NOT NULL
+          GROUP BY card_id HAVING COUNT(*) > 1),
+        latest AS (
+          SELECT DISTINCT ON (card_id) card_id, gbp FROM prices
+          WHERE card_id = ANY(%s) ORDER BY card_id, day DESC)
+        SELECT c.id, c.name, c.set_id, c.local_id, c.image, c.alt_image,
+               l.gbp AS price, a.lo, a.hi, a.days,
+               CASE WHEN a.lo > 0 THEN (l.gbp - a.lo) / a.lo * 100 END AS from_low,
+               CASE WHEN a.hi > 0 THEN (l.gbp - a.hi) / a.hi * 100 END AS from_high
+        FROM agg a JOIN latest l ON l.card_id=a.card_id JOIN cards c ON c.id=a.card_id
+        WHERE l.gbp IS NOT NULL
+    """, (MARKET_IDS, MARKET_IDS)).fetchall()
+    for r in rows:
+        r["set_name"] = set_meta(r["set_id"]).get("name") or r["set_id"]
+        with_images(r)
+    return {
+        "risen": sorted([r for r in rows if r["from_low"]], key=lambda r: -r["from_low"])[:limit],
+        "fallen": sorted([r for r in rows if r["from_high"]], key=lambda r: r["from_high"])[:limit],
+    }
+
+
+def sparklines(card_ids, days=30):
+    """{card_id: [price, ...]} for tiny inline charts."""
+    if not card_ids:
+        return {}
+    rows = db().execute("""
+        SELECT card_id, day, gbp FROM prices
+        WHERE card_id = ANY(%s) AND gbp IS NOT NULL AND day > CURRENT_DATE - %s
+        ORDER BY card_id, day""", (card_ids, days)).fetchall()
+    out = {}
+    for r in rows:
+        out.setdefault(r["card_id"], []).append(round(float(r["gbp"]), 2))
+    return out
+
+
+def refresh_market(conn):
+    """Price the curated watchlist so the market page works for everyone.
+
+    These cards aren't necessarily owned by anyone. Prices land in the same
+    shared `prices` table, so if a user later adds one of them it's already
+    priced and their history starts populated rather than empty.
+    """
+    n = 0
+    for c in MARKET:
+        try:
+            upsert_card({"id": c["id"], "name": c["name"], "localId": c["local_id"],
+                         "image": c.get("image"), "rarity": None,
+                         "set": {"id": c["set_id"],
+                                 "name": set_meta(c["set_id"]).get("name"),
+                                 "cardCount": {"total": set_meta(c["set_id"]).get("total")}}},
+                        conn=conn)
+            if refresh_price(c["id"], force=True, conn=conn) is not None:
+                n += 1
+        except Exception:
+            continue
+        time.sleep(0.15)
+    conn.commit()
+    return n
+
+
+def market_movers(limit=12):
+    """Biggest 24h movers across the watchlist, plus the most valuable."""
+    rows = db().execute("""
+        WITH latest AS (
+          SELECT DISTINCT ON (card_id) card_id, day, gbp
+          FROM prices WHERE card_id = ANY(%s) ORDER BY card_id, day DESC),
+        prev AS (
+          SELECT DISTINCT ON (p.card_id) p.card_id, p.gbp
+          FROM prices p JOIN latest l ON l.card_id = p.card_id AND p.day < l.day
+          ORDER BY p.card_id, p.day DESC)
+        SELECT c.id, c.name, c.set_id, c.local_id, c.image, c.alt_image,
+               l.gbp AS price, pr.gbp AS prev,
+               CASE WHEN pr.gbp > 0 THEN (l.gbp - pr.gbp) / pr.gbp * 100 END AS pct
+        FROM latest l
+        JOIN cards c ON c.id = l.card_id
+        LEFT JOIN prev pr ON pr.card_id = l.card_id
+        WHERE l.gbp IS NOT NULL
+    """, ([c["id"] for c in MARKET],)).fetchall()
+
+    for r in rows:
+        r["set_name"] = set_meta(r["set_id"]).get("name") or r["set_id"]
+        with_images(r)
+
+    moved = [r for r in rows if r["pct"] is not None]
+    return {
+        "gainers": sorted(moved, key=lambda r: -r["pct"])[:limit],
+        "losers": sorted(moved, key=lambda r: r["pct"])[:limit],
+        "top": sorted(rows, key=lambda r: -(r["price"] or 0))[:limit],
+        "count": len(rows),
+        "has_history": bool(moved),
+    }
+
+
+@app.route("/market")
+@login_required
+def market():
+    m = market_movers()
+    shown = {r["id"] for grp in ("gainers", "losers", "top") for r in m[grp]}
+    return render_template("market.html", m=m, alltime=market_alltime(),
+                           spark=sparklines(list(shown)), page="movers")
+
+
 def refresh_all():
     """Refresh every held card once, then snapshot every user. Returns cards refreshed."""
     n = 0
@@ -811,6 +1185,7 @@ def refresh_all():
                 n += 1
             time.sleep(0.2)
         c.commit()
+        refresh_market(c)
         backfill_alt_images(c)
         fired = check_alerts(c)
         for u in c.execute("SELECT * FROM users").fetchall():

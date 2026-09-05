@@ -5,6 +5,24 @@
 <span class="chip {{ d }}">{{ label }} <b class="num">{% if c.pct is none %}—{% else %}{{ '+' if c.pct > 0 }}{{ '%.2f'|format(c.pct) }}%{% endif %}</b></span>
 {%- endmacro %}
 
+{% if not s.top %}
+<section class="onboard">
+  <div class="ob-mark">◆</div>
+  <h1>Start your binder</h1>
+  <p>Add a card and Holo tracks what it's worth, every day, automatically.
+     Tomorrow morning you'll get your first price movement.</p>
+  <a class="btn primary" href="{{ url_for('add_page') }}">Add your first card</a>
+  <div class="ob-steps">
+    <div><b>1</b> Search any card by name</div>
+    <div><b>2</b> Set quantity, condition and what you paid</div>
+    <div><b>3</b> Prices refresh daily at 6am</div>
+  </div>
+  <div class="ob-tip">Try <i>Umbreon ex</i>, <i>Charizard ex</i> or a card from your latest pack.</div>
+  <div class="ob-tip" style="margin-top:18px">Nothing to add yet?
+    <a href="/market" style="text-decoration:underline">See what the market's doing</a>.</div>
+</section>
+{% else %}
+
 <section class="hero">
   <div class="who">{{ session.username }}'s collection</div>
   <div class="value num"><small>£</small>{{ '{:,.2f}'.format(s.total) }}</div>
@@ -64,7 +82,7 @@
 <section class="sec">
   <h2>By set</h2>
   {% for e in s.sets[:6] %}
-  <div class="row" style="display:block">
+  <a class="row" style="display:block" href="/set/{{ e.set_id }}">
     <div style="display:flex;justify-content:space-between;align-items:baseline">
       <div class="n" style="font-weight:600">{{ e.set }}</div>
       <div class="p num" style="font-weight:600">£{{ '{:,.2f}'.format(e.value) }}</div>
@@ -74,13 +92,29 @@
       <span class="num">{{ e.share }}% of value</span>
     </div>
     <div class="bar"><i style="width:{{ e.share }}%"></i></div>
-  </div>
+  </a>
   {% endfor %}
 </section>
 {% endif %}
 
-{% if not s.top %}
-<div class="hint">Nothing here yet.<br>Tap the + to add your first card.</div>
+
+{% if activity %}
+<section class="sec"><h2>Recent activity</h2>
+{% for a in activity %}
+<div class="row">
+  <img {{ img_attrs(a) }} alt="">
+  <div class="t"><div class="n">{{ a.name }}</div>
+    <div class="m">{{ 'Added' if a.kind == 'add' else 'Sold' }}{% if a.qty > 1 %} ×{{ a.qty }}{% endif %} · {{ a.set_name or a.set_id }}</div></div>
+  <div class="r">
+    {% if a.kind == 'sold' and a.sold %}<div class="c num">£{{ '{:,.2f}'.format(a.sold) }}</div>
+    {% elif a.paid %}<div class="c num muted">£{{ '{:,.2f}'.format(a.paid) }}</div>{% endif %}
+    <div class="p tiny muted">{{ a.at.strftime('%d %b') }}</div>
+  </div>
+</div>
+{% endfor %}
+</section>
+{% endif %}
+
 {% endif %}
 {% endblock %}
 

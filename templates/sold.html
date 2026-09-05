@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="sec" style="padding-top:26px">
+  <h2>Sold <span class="tiny muted">{{ rows|length }} sale{{ '' if rows|length == 1 else 's' }}</span></h2>
+  <div class="figs">
+    <div class="fig"><div class="k">Gross</div><div class="v num">£{{ '{:,.2f}'.format(gross) }}</div></div>
+    <div class="fig"><div class="k">Realised P&amp;L</div>
+      <div class="v num {{ 'up' if realised > 0 else ('down' if realised < 0) }}">{{ '+' if realised > 0 }}£{{ '{:,.2f}'.format(realised) }}</div></div>
+  </div>
+</section>
+
+<section class="sec">
+  {% for r in rows %}
+  <div class="row">
+    <img {{ img_attrs(r) }} alt="">
+    <div class="t"><div class="n">{{ r.name }}{% if r.qty > 1 %} ×{{ r.qty }}{% endif %}</div>
+      <div class="m">{{ r.sold_on }}{% if r.venue %} · {{ r.venue }}{% endif %}</div></div>
+    <div class="r">
+      {% if r.pnl is not none %}
+      <div class="p num {{ 'up' if r.pnl > 0 else ('down' if r.pnl < 0) }}">{{ '+' if r.pnl > 0 }}£{{ '{:,.2f}'.format(r.pnl) }}</div>
+      {% endif %}
+      <div class="c num">£{{ '{:,.2f}'.format(r.gross) }}</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="hint">No sales logged.<br>
+    Open a card you own and tap Sell to record what you got for it.</div>
+  {% endfor %}
+</section>
+{% endblock %}
