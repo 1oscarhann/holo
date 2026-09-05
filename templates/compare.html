@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="sec" style="padding-top:24px"><h2>Compare</h2></section>
+{% if cards|length < 2 %}
+<div class="hint">Pick two cards to compare.<br>Open a card and tap Compare, or add <code>?id=…&amp;id=…</code>.</div>
+{% else %}
+<div class="cmp">
+  {% for c in cards %}
+  <div class="cmp-c">
+    <img {{ img_attrs(c) }} alt="{{ c.name }}">
+    <div class="n">{{ c.name }}</div>
+    <div class="m">{{ c.set_name }} · {{ c.local_id }}</div>
+    <div class="v num">{% if c.price %}£{{ '{:,.2f}'.format(c.price) }}{% else %}—{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+<div class="cmp-rows">
+  {% set a = cards[0] %} {% set b = cards[1] %}
+  {% macro rw(label, x, y) %}
+  <div class="cmp-r"><b>{{ x if x is not none and x != '' else '—' }}</b>
+    <span>{{ label }}</span>
+    <b>{{ y if y is not none and y != '' else '—' }}</b></div>
+  {% endmacro %}
+  {{ rw('Rarity', a.rarity, b.rarity) }}
+  {{ rw('HP', a.detail.hp, b.detail.hp) }}
+  {{ rw('Type', (a.detail.types or [])|join(', '), (b.detail.types or [])|join(', ')) }}
+  {{ rw('Stage', a.detail.stage, b.detail.stage) }}
+  {{ rw('Retreat', a.detail.retreat, b.detail.retreat) }}
+  {{ rw('Illustrator', a.detail.illustrator, b.detail.illustrator) }}
+  {{ rw('Attacks', (a.detail.attacks or [])|length, (b.detail.attacks or [])|length) }}
+</div>
+{% endif %}
+{% endblock %}

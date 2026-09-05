@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="sec" style="padding-top:24px">
+  <h2>Bulk import</h2>
+  <p class="hint" style="text-align:left;padding:0 0 14px">
+    Paste a CSV export from Collectr or TCGplayer, or just one card per line.
+    Quantity, set number and price are picked up if they're there.
+  </p>
+  <textarea id="bulk" rows="9" placeholder="2, Umbreon ex, 161, 480.00
+Charizard ex, 223
+Mew ex, 201, 95"></textarea>
+  <button class="btn" id="go">Import</button>
+  <div id="out" class="hint" style="text-align:left"></div>
+</section>
+{% endblock %}
+
+{% block script %}
+<script>
+document.getElementById('go').onclick = async e => {
+  const t = document.getElementById('bulk').value.trim();
+  if (!t) return toast('Paste some cards first');
+  const out = document.getElementById('out');
+  e.target.disabled = true; out.textContent = 'Importing…';
+  try {
+    const r = await api('/import', 'POST', {text: t});
+    out.innerHTML = `Added <b>${r.added}</b> of ${r.total}.` +
+      (r.failed.length ? `<br>Not found: ${r.failed.join(', ')}` : '');
+    if (r.added) setTimeout(() => location.href = '/cards', 1200);
+  } catch (err) { out.textContent = 'Import failed.'; }
+  e.target.disabled = false;
+};
+</script>
+{% endblock %}

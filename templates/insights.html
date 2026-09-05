@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="sec" style="padding-top:26px"><h2>Insights</h2></section>
+
+{% if rarities %}
+<section class="sec"><h2>Value by rarity</h2>
+  <div class="rbar">{% for r in rarities %}<i style="width:{{ r.share }}%;--i:{{ loop.index0 }}" title="{{ r.rarity }}"></i>{% endfor %}</div>
+  {% for r in rarities[:6] %}
+  <div class="row slim"><span class="dot" style="--i:{{ loop.index0 }}"></span>
+    <div class="t"><div class="n">{{ r.rarity }}</div><div class="m">{{ r.n }} card{{ '' if r.n == 1 else 's' }}</div></div>
+    <div class="r"><div class="c num">£{{ '{:,.2f}'.format(r.value) }}</div>
+      <div class="p tiny muted">{{ r.share }}%</div></div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% macro cards(items, label) %}
+<section class="sec"><h2>{{ label }}</h2>
+{% for h in items %}
+<a class="row" href="/card/{{ h.hid }}">
+  <img {{ img_attrs(h) }} alt="">
+  <div class="t"><div class="n">{{ h.name }}</div>
+    <div class="m">paid £{{ '{:,.2f}'.format(h.paid) }} · now £{{ '{:,.2f}'.format(h.value) }}</div></div>
+  <div class="r"><div class="p num {{ 'up' if h.gain_pct > 0 else 'down' }}">{{ '+' if h.gain_pct > 0 }}{{ '%.0f'|format(h.gain_pct) }}%</div>
+    <div class="c num">{{ '+' if h.gain > 0 }}£{{ '{:,.2f}'.format(h.gain) }}</div></div>
+</a>
+{% else %}<div class="hint">Add what you paid for a card to see this.</div>{% endfor %}
+</section>
+{% endmacro %}
+
+{{ cards(best, 'Best buys') }}
+{{ cards(worst, 'Worst buys') }}
+
+{% if n_sales %}
+<section class="sec"><h2>Flips <span class="tiny muted">{{ n_sales }} sold</span></h2>
+  {% if best_flip %}<div class="row slim"><div class="t"><div class="n">Best flip</div>
+    <div class="m">{{ best_flip.name }}</div></div>
+    <div class="c num up">+£{{ '{:,.2f}'.format(best_flip.pnl) }}</div></div>{% endif %}
+  {% if worst_flip and worst_flip.id != best_flip.id %}<div class="row slim"><div class="t"><div class="n">Worst flip</div>
+    <div class="m">{{ worst_flip.name }}</div></div>
+    <div class="c num {{ 'down' if worst_flip.pnl < 0 }}">£{{ '{:,.2f}'.format(worst_flip.pnl) }}</div></div>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

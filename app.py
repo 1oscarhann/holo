@@ -16,6 +16,7 @@ import json
 import os
 from urllib.parse import quote
 import psycopg
+from psycopg.types.json import Json
 from psycopg.rows import dict_row
 import threading
 import time
@@ -23,6 +24,7 @@ import secrets
 from datetime import date, datetime, timedelta
 from functools import wraps
 
+import re
 import requests
 from flask import (Flask, g, jsonify, redirect, render_template, request,
                    session, url_for, abort)
@@ -37,6 +39,7 @@ EUR_GBP = float(os.environ.get("EUR_GBP", "0.85"))
 USD_GBP = float(os.environ.get("USD_GBP", "0.78"))
 PRICE_TTL_HOURS = 20
 PTCGIO_IMG = "https://images.pokemontcg.io"
+VERSION = os.environ.get("APP_VERSION", "0.7.0-beta")
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)  # Render + Cloudflare in front
@@ -191,7 +194,13 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS cards (
   id TEXT PRIMARY KEY, name TEXT, set_id TEXT, set_name TEXT, local_id TEXT,
   rarity TEXT, image TEXT, set_total INTEGER,
-  alt_image TEXT, alt_checked TIMESTAMPTZ);
+  alt_image TEXT, alt_checked TIMESTAMPTZ, data JSONB);
+
+-- sealed product and anything else without a TCGdex entry
+CREATE TABLE IF NOT EXISTS custom_items (
+  id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, kind TEXT DEFAULT 'sealed', qty INTEGER DEFAULT 1,
+  paid REAL, value REAL, note TEXT, added TIMESTAMPTZ DEFAULT now());
 CREATE TABLE IF NOT EXISTS prices (
   card_id TEXT, day DATE, gbp REAL, source TEXT, fetched TIMESTAMPTZ,
   PRIMARY KEY (card_id, day));
@@ -258,6 +267,7 @@ with raw_db() as c:
     # migrations for databases created before v2.2
     c.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS alt_image TEXT")
     c.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS alt_checked TIMESTAMPTZ")
+    c.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS data JSONB")
 
 # ------------------------------------------------------------------------- auth
 
@@ -351,14 +361,22 @@ def price_from(card):
 
 def upsert_card(card, conn=None):
     s = card.get("set") or {}
+    # keep the whole payload: HP, attacks, weaknesses, illustrator, legality etc.
+    keep = {k: card.get(k) for k in (
+        "category", "hp", "types", "stage", "suffix", "evolveFrom", "attacks",
+        "abilities", "weaknesses", "resistances", "retreat", "regulationMark",
+        "illustrator", "description", "dexId", "legal", "variants") if card.get(k) is not None}
     (conn or db()).execute("""INSERT INTO cards
-        (id,name,set_id,set_name,local_id,rarity,image,set_total) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+        (id,name,set_id,set_name,local_id,rarity,image,set_total,data)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, set_id=EXCLUDED.set_id,
         set_name=EXCLUDED.set_name, local_id=EXCLUDED.local_id, rarity=EXCLUDED.rarity,
-        image=EXCLUDED.image, set_total=EXCLUDED.set_total""",
+        image=EXCLUDED.image, set_total=EXCLUDED.set_total,
+        data=COALESCE(EXCLUDED.data, cards.data)""",
                  (card["id"], card.get("name"), s.get("id"), s.get("name"), card.get("localId"),
                   card.get("rarity"), card.get("image"),
-                  (s.get("cardCount") or {}).get("total")))
+                  (s.get("cardCount") or {}).get("total"),
+                  Json(keep) if keep else None))
 
 
 def refresh_price(card_id, force=False, conn=None):
@@ -555,6 +573,7 @@ def card_page(hid):
     if not h:
         abort(404)
     u = db().execute("SELECT ntfy_topic, discord_webhook FROM users WHERE id=%s", (uid(),)).fetchone()
+    h["detail"] = card_detail(h["id"])
     return render_template("card.html", c=h, alerts=user_alerts(uid(), h["id"]),
                            has_notify=bool(u["ntfy_topic"] or u["discord_webhook"]), page="cards")
 
@@ -1173,6 +1192,283 @@ def market():
     shown = {r["id"] for grp in ("gainers", "losers", "top") for r in m[grp]}
     return render_template("market.html", m=m, alltime=market_alltime(),
                            spark=sparklines(list(shown)), page="movers")
+
+
+@app.context_processor
+def inject_version():
+    return {"VERSION": VERSION}
+
+
+@app.route("/api/feedback", methods=["POST"])
+@login_required
+def api_feedback():
+    """Beta feedback -> the same Discord webhook alerts already use."""
+    d = request.get_json(force=True) or {}
+    msg = (d.get("message") or "").strip()
+    if not msg:
+        return jsonify(error="Say something first"), 400
+    u = db().execute("SELECT username, discord_webhook FROM users WHERE id=%s", (uid(),)).fetchone()
+    hook = os.environ.get("FEEDBACK_WEBHOOK") or u.get("discord_webhook")
+    if not hook:
+        return jsonify(error="No feedback webhook configured yet."), 400
+    try:
+        requests.post(hook, json={"content":
+            f"**Holo {VERSION}** feedback from `{u['username']}`\n"
+            f"page: `{d.get('page') or '?'}`\n{msg[:1500]}"}, timeout=8)
+    except requests.RequestException:
+        return jsonify(error="Couldn't send. Try again."), 502
+    return jsonify(ok=True)
+
+
+@app.route("/manifest.json")
+def manifest():
+    """Installable to the home screen: no browser chrome, own app switcher entry."""
+    return jsonify({
+        "name": "Holo", "short_name": "Holo",
+        "description": "Pok\u00e9mon card portfolio tracker",
+        "start_url": "/", "scope": "/",
+        "display": "standalone", "orientation": "portrait",
+        "background_color": "#0b0d12", "theme_color": "#0b0d12",
+        "icons": [
+            {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+            {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable"},
+        ],
+    })
+
+
+@app.route("/icon.svg")
+def icon():
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs><linearGradient id="h" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#7ae2ff"/><stop offset=".5" stop-color="#c9a6ff"/>
+<stop offset="1" stop-color="#ffce78"/></linearGradient></defs>
+<rect width="512" height="512" rx="112" fill="#0b0d12"/>
+<rect x="150" y="104" width="212" height="296" rx="20" fill="none"
+      stroke="url(#h)" stroke-width="20"/>
+<path d="M196 300 L242 236 L286 274 L330 196" fill="none" stroke="url(#h)"
+      stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>"""
+    return app.response_class(svg, mimetype="image/svg+xml",
+                              headers={"Cache-Control": "public, max-age=604800"})
+
+
+@app.after_request
+def cache_static(resp):
+    """Static assets are versioned by deploy; let the browser and Cloudflare keep them.
+
+    Everything else is per-user, so it must never be cached anywhere shared.
+    """
+    if request.path.startswith("/static/"):
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+    elif request.path.startswith(("/api/", "/export/")) or session.get("uid"):
+        resp.headers["Cache-Control"] = "private, no-store"
+    return resp
+
+
+ENERGY = {"Grass": "#4dab5c", "Fire": "#e8603c", "Water": "#4aa8e0", "Lightning": "#e8c33c",
+          "Psychic": "#b060c8", "Fighting": "#c0703c", "Darkness": "#4a5568",
+          "Metal": "#8a97a8", "Fairy": "#e878b0", "Dragon": "#b8952c",
+          "Colorless": "#b8b4ac"}
+
+
+@app.template_global()
+def energy_colour(t):
+    return ENERGY.get(t, "#8a8f9c")
+
+
+def card_detail(card_id):
+    """Full TCGdex payload, fetched once and cached in cards.data."""
+    row = db().execute("SELECT data FROM cards WHERE id=%s", (card_id,)).fetchone()
+    if row and row["data"]:
+        return row["data"]
+    card = tcgdex(f"cards/{card_id}")
+    if card:
+        upsert_card(card)
+        db().commit()
+        r = db().execute("SELECT data FROM cards WHERE id=%s", (card_id,)).fetchone()
+        return (r or {}).get("data") or {}
+    return {}
+
+
+# ------------------------------------------------------------------ all sets
+
+
+@app.route("/sets")
+@login_required
+def sets_page():
+    owned = {r["set_id"]: r for r in db().execute("""
+        SELECT c.set_id, COUNT(DISTINCT c.id) AS n,
+               SUM(h.qty * COALESCE(h.manual_gbp,
+                   (SELECT gbp FROM prices p WHERE p.card_id=c.id ORDER BY day DESC LIMIT 1),0)) AS value
+        FROM holdings h JOIN cards c ON c.id=h.card_id
+        WHERE h.user_id=%s GROUP BY c.set_id""", (uid(),)).fetchall()}
+
+    today = date.today().isoformat()
+    series, upcoming = {}, []
+    for sid, m in SETS.items():
+        if m.get("serie") in {"Pok\u00e9mon TCG Pocket"}:
+            continue
+        e = dict(m, id=sid, logo=f"https://assets.tcgdex.net/en/{sid.split('.')[0][:2]}/{sid}/logo.webp",
+                 owned=(owned.get(sid) or {}).get("n") or 0,
+                 value=float((owned.get(sid) or {}).get("value") or 0))
+        e["pct"] = round(e["owned"] / m["total"] * 100) if m.get("total") else 0
+        if (m.get("release") or "") > today:
+            upcoming.append(e)
+        series.setdefault(m.get("serie") or "Other", []).append(e)
+
+    for v in series.values():
+        v.sort(key=lambda e: e.get("release") or "", reverse=True)
+    ordered = sorted(series.items(),
+                     key=lambda kv: max((e.get("release") or "") for e in kv[1]), reverse=True)
+    upcoming.sort(key=lambda e: e["release"])
+    return render_template("sets.html", series=ordered, upcoming=upcoming[:6],
+                           today=today, page="cards")
+
+
+# -------------------------------------------------------------------- insights
+
+
+@app.route("/insights")
+@login_required
+def insights_page():
+    held = holdings_with_prices(uid())
+    for h in held:
+        h["gain"] = ((h["value"] or 0) - (h["paid"] or 0) * (h["qty"] or 1)
+                     if h.get("paid") else None)
+        h["gain_pct"] = (h["gain"] / ((h["paid"] or 1) * (h["qty"] or 1)) * 100
+                         if h.get("paid") else None)
+    scored = [h for h in held if h["gain_pct"] is not None]
+
+    by_rarity = {}
+    for h in held:
+        k = h.get("rarity") or "Unknown"
+        e = by_rarity.setdefault(k, {"rarity": k, "value": 0, "n": 0})
+        e["value"] += h["value"] or 0
+        e["n"] += h["qty"] or 1
+    total = sum(e["value"] for e in by_rarity.values()) or 1
+    rarities = sorted(by_rarity.values(), key=lambda e: -e["value"])
+    for e in rarities:
+        e["share"] = round(e["value"] / total * 100)
+
+    sales = db().execute("""
+        SELECT s.*, c.name FROM sales s JOIN cards c ON c.id=s.card_id
+        WHERE s.user_id=%s""", (uid(),)).fetchall()
+    for s in sales:
+        s["pnl"] = ((s["sold"] or 0) - (s["paid"] or 0)) * (s["qty"] or 1)
+
+    return render_template(
+        "insights.html",
+        best=sorted(scored, key=lambda h: -h["gain_pct"])[:5],
+        worst=sorted(scored, key=lambda h: h["gain_pct"])[:5],
+        rarities=rarities,
+        best_flip=max(sales, key=lambda s: s["pnl"], default=None),
+        worst_flip=min(sales, key=lambda s: s["pnl"], default=None),
+        n_sales=len(sales), page="portfolio")
+
+
+# --------------------------------------------------------------------- compare
+
+
+@app.route("/compare")
+@login_required
+def compare_page():
+    ids = [i for i in request.args.getlist("id") if i][:2]
+    cards = []
+    for cid in ids:
+        row = db().execute("SELECT * FROM cards WHERE id=%s", (cid,)).fetchone()
+        if not row:
+            continue
+        row["detail"] = card_detail(cid)
+        row["price"] = (db().execute(
+            "SELECT gbp FROM prices WHERE card_id=%s ORDER BY day DESC LIMIT 1",
+            (cid,)).fetchone() or {}).get("gbp")
+        row["spark"] = sparklines([cid], 60).get(cid, [])
+        cards.append(with_images(row))
+    return render_template("compare.html", cards=cards, page="cards")
+
+
+# ---------------------------------------------------------------- bulk import
+
+
+@app.route("/import", methods=["GET", "POST"])
+@login_required
+def import_page():
+    if request.method == "GET":
+        return render_template("import.html", page="cards")
+
+    text = (request.get_json(force=True) or {}).get("text", "")
+    rows, added, failed = [], 0, []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.lower().startswith(("name,", "quantity,", "card name")):
+            continue
+        parts = [p.strip() for p in re.split(r"\t|,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", line)]
+        parts = [p.strip('"') for p in parts if p != ""]
+        if not parts:
+            continue
+        rows.append(parts)
+
+    for parts in rows[:300]:
+        qty, paid, name, number = 1, None, parts[0], None
+        if parts[0].isdigit() and len(parts) > 1:      # "2, Umbreon ex, PRE, 161"
+            qty, name = int(parts[0]), parts[1]
+            parts = parts[1:]
+        for p in parts[1:]:
+            if re.fullmatch(r"\d+", p) and number is None:
+                number = p
+            elif re.fullmatch(r"[\u00a3$]?\d+(\.\d{1,2})?", p) and paid is None:
+                paid = float(p.lstrip("\u00a3$"))
+
+        res = tcgdex("cards", name=name) or []
+        pool = [c for c in res
+                if set_meta(c["id"].rsplit("-", 1)[0]).get("serie") not in DIGITAL_SERIES]
+        if number:
+            pool = [c for c in pool if str(c.get("localId")) == number] or pool
+        if not pool:
+            failed.append(name)
+            continue
+        pool.sort(key=lambda c: rank_key({"name": c.get("name"),
+                                          "set_id": c["id"].rsplit("-", 1)[0]}, name.lower()))
+        cid = pool[0]["id"]
+        full = tcgdex(f"cards/{cid}")
+        if full:
+            upsert_card(full)
+        # already own it? add to the pile rather than blowing up on the unique key
+        db().execute("""INSERT INTO holdings (user_id,card_id,qty,paid)
+                        VALUES (%s,%s,%s,%s)
+                        ON CONFLICT (user_id,card_id,grade) DO UPDATE
+                        SET qty = holdings.qty + EXCLUDED.qty,
+                            paid = COALESCE(holdings.paid, EXCLUDED.paid)""",
+                     (uid(), cid, qty, paid))
+        added += 1
+        refresh_price(cid)
+    db().commit()
+    if added:
+        ensure_snapshot(uid(), db(), force=True)
+        db().commit()
+    return jsonify(added=added, failed=failed[:20], total=len(rows))
+
+
+# --------------------------------------------------------------- sealed / misc
+
+
+@app.route("/api/custom", methods=["POST", "DELETE"])
+@login_required
+def api_custom():
+    d = request.get_json(force=True) or {}
+    if request.method == "DELETE":
+        db().execute("DELETE FROM custom_items WHERE id=%s AND user_id=%s",
+                     (d.get("id"), uid()))
+        db().commit()
+        return jsonify(ok=True)
+    if not (d.get("name") or "").strip():
+        return jsonify(error="Name required"), 400
+    db().execute("""INSERT INTO custom_items (user_id,name,kind,qty,paid,value,note)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                 (uid(), d["name"].strip(), d.get("kind") or "sealed",
+                  int(d.get("qty") or 1), d.get("paid"), d.get("value"), d.get("note")))
+    db().commit()
+    return jsonify(ok=True)
 
 
 def refresh_all():

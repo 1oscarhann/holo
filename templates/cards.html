@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block body %}
+<div class="seg" style="margin-bottom:6px">
+  <a href="/cards" class="on">Yours</a>
+  <a href="/sets">All sets</a>
+  <a href="/import">Import</a>
+</div>
 <div class="search"><input id="q" type="search" placeholder="Filter your cards" autocomplete="off"></div>
 <div class="list-actions"><button class="btn ghost" id="refresh">Refresh prices</button></div>
 <section class="sec" id="list">

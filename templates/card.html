@@ -3,7 +3,10 @@
 {% block body %}
 <a class="back" href="/cards">‹ Cards</a>
 <div class="cardhero">
-  <img {{ img_attrs(c, hi=True) }} alt="{{ c.name }}">
+  <div class="art-wrap">
+  <div class="art-bg" style="background-image:url('{{ c.img }}')"></div>
+  <img class="art" {{ img_attrs(c, hi=True) }} alt="{{ c.name }}">
+</div>
   <div>
     <div class="n">{{ c.name }}</div>
     <div class="m">{{ c.set_name }} · {{ c.local_id }}{% if c.rarity %}<br>{{ c.rarity }}{% endif %}{% if c.grade %}<br>{{ c.grade }}{% endif %}</div>
@@ -68,6 +71,50 @@
   <button class="btn" id="s-save">Log sale</button>
 </div>
 </div>
+{% set d = c.detail or {} %}
+{% if d %}
+<section class="sec cardinfo">
+  <div class="pills">
+    {% if d.hp %}<span class="pill">{{ d.hp }} HP</span>{% endif %}
+    {% for t in d.types or [] %}
+    <span class="pill type" style="--e:{{ energy_colour(t) }}">{{ t }}</span>{% endfor %}
+    {% if d.stage %}<span class="pill">{{ d.stage }}{% if d.evolveFrom %} · from {{ d.evolveFrom }}{% endif %}</span>{% endif %}
+    {% if c.rarity %}<span class="pill">{{ c.rarity }}</span>{% endif %}
+    {% if d.regulationMark %}<span class="pill">Reg {{ d.regulationMark }}</span>{% endif %}
+  </div>
+
+  {% for a in d.attacks or [] %}
+  <div class="atk">
+    <div class="cost">{% for e in a.cost or [] %}<i style="background:{{ energy_colour(e) }}"></i>{% endfor %}</div>
+    <div class="atk-t"><div class="n">{{ a.name }}</div>
+      {% if a.effect %}<div class="m">{{ a.effect }}</div>{% endif %}</div>
+    {% if a.damage %}<div class="dmg num">{{ a.damage }}</div>{% endif %}
+  </div>
+  {% endfor %}
+
+  {% for ab in d.abilities or [] %}
+  <div class="atk ability">
+    <div class="atk-t"><div class="n">{{ ab.name }} <span class="tag">{{ ab.type or 'Ability' }}</span></div>
+      {% if ab.effect %}<div class="m">{{ ab.effect }}</div>{% endif %}</div>
+  </div>
+  {% endfor %}
+
+  <div class="kv">
+    {% for w in d.weaknesses or [] %}
+    <div><span>Weakness</span><b style="color:{{ energy_colour(w.type) }}">{{ w.type }} {{ w.value }}</b></div>
+    {% endfor %}
+    {% for r in d.resistances or [] %}
+    <div><span>Resistance</span><b>{{ r.type }} {{ r.value }}</b></div>
+    {% endfor %}
+    {% if d.retreat is not none %}<div><span>Retreat</span><b>{{ d.retreat }}</b></div>{% endif %}
+    {% if d.illustrator %}<div><span>Illustrator</span><b>{{ d.illustrator }}</b></div>{% endif %}
+    {% if d.legal %}<div><span>Legal</span><b>{{ 'Standard' if d.legal.standard else ('Expanded' if d.legal.expanded else 'Unlimited') }}</b></div>{% endif %}
+    <div><span>Set</span><b><a href="/set/{{ c.set_id }}">{{ c.set_name }}</a></b></div>
+  </div>
+  {% if d.description %}<p class="dex">{{ d.description }}</p>{% endif %}
+</section>
+{% endif %}
+
 {% endblock %}
 {% block script %}
 <script>

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block body %}
+
+{% if upcoming %}
+<section class="sec" style="padding-top:24px">
+  <h2>Coming soon</h2>
+  <div class="soon">
+    {% for e in upcoming %}
+    <div class="soon-i">
+      <img src="{{ e.logo }}" alt="" loading="lazy" onerror="this.style.display='none'">
+      <div class="n">{{ e.name }}</div>
+      <div class="m" data-countdown="{{ e.release }}">{{ e.release }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% for serie, items in series %}
+<section class="sec">
+  <h2>{{ serie }} <span class="tiny muted">{{ items|length }}</span></h2>
+  <div class="setgrid">
+    {% for e in items %}
+    <a class="setcard {{ 'started' if e.owned else '' }}" href="/set/{{ e.id }}">
+      <img src="{{ e.logo }}" alt="{{ e.name }}" loading="lazy"
+           onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'nologo',textContent:this.alt}))">
+      <div class="sn">{{ e.name }}</div>
+      <div class="sm">{% if e.owned %}{{ e.owned }}/{{ e.total }} · {{ e.pct }}%{% else %}{{ e.total or '?' }} cards{% endif %}</div>
+      {% if e.owned %}<div class="sbar"><i style="width:{{ e.pct }}%"></i></div>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endblock %}
+
+{% block script %}
+<script>
+document.querySelectorAll('[data-countdown]').forEach(el => {
+  const days = Math.ceil((new Date(el.dataset.countdown) - Date.now()) / 86400000);
+  el.textContent = days > 0 ? (days === 1 ? 'Tomorrow' : days + ' days') : 'Out now';
+});
+</script>
+{% endblock %}

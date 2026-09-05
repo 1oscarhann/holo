@@ -35,9 +35,28 @@
   <p class="tiny muted" style="line-height:1.55">Market prices come from Cardmarket (via TCGdex) converted to pounds, with TCGplayer as a fallback. They refresh every morning at 6am, or whenever you tap Refresh on the Cards tab. Graded cards need a manual price.</p>
 </section>
 <a class="btn ghost" href="/logout">Log out</a>
+
+<section class="sec" id="feedback">
+  <h2>Beta feedback</h2>
+  <p class="hint" style="text-align:left;padding:0 0 12px">
+    Broken, confusing, or missing something? Say so.</p>
+  <textarea id="fb" rows="4" placeholder="What happened, and what did you expect?"></textarea>
+  <button class="btn ghost" id="fb-send">Send feedback</button>
+</section>
+
+<div class="verstamp">Holo {{ VERSION }}</div>
 {% endblock %}
 {% block script %}
 <script>
+document.getElementById('fb-send').onclick = async e => {
+  const t = document.getElementById('fb').value.trim();
+  if (!t) return toast('Type something first');
+  e.target.disabled = true;
+  try { await api('/api/feedback','POST',{message:t, page:location.pathname});
+        document.getElementById('fb').value=''; toast('Sent — thank you'); }
+  catch { toast('Could not send'); }
+  e.target.disabled = false;
+};
 const body = () => ({ntfy_topic: document.getElementById('n-topic').value, discord_webhook: document.getElementById('n-hook').value, digest: document.getElementById('n-digest').checked});
 document.getElementById('n-save').onclick = async () => { try { await api('/api/settings','POST',body()); toast('Saved'); } catch(e){ toast(e.message); } };
 document.getElementById('n-test').onclick = async () => { try { await api('/api/settings','POST',body()); const r = await api('/api/settings/test','POST'); toast(r.ok ? 'Sent — check your phone' : r.error); } catch(e){ toast(e.message); } };

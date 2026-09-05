@@ -8,8 +8,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Holo">
 </head>
 <body>
+<div id="nprog"></div>
+<div id="beta" class="beta" hidden>
+  <b>Beta</b> — rough edges expected. Prices update daily.
+  <a href="/profile#feedback">Report a bug</a>
+  <button id="beta-x" aria-label="Dismiss">&times;</button>
+</div>
 <main class="shell">
 {% block body %}{% endblock %}
 </main>
@@ -29,6 +40,17 @@
 {% endif %}
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='nav.js') }}" defer></script>
+<script src="{{ url_for('static', filename='craft.js') }}" defer></script>
+<script>
+(() => {
+  const b = document.getElementById('beta');
+  if (!localStorage.getItem('beta-hidden')) b.hidden = false;
+  document.getElementById('beta-x').onclick = () => {
+    b.hidden = true; localStorage.setItem('beta-hidden', '1');
+  };
+})();
+</script>
 {% block script %}{% endblock %}
 </body>
 </html>

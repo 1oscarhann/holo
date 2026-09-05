@@ -8,9 +8,16 @@
 {% if not s.top %}
 <section class="onboard">
   <div class="ob-mark">◆</div>
-  <h1>Start your binder</h1>
-  <p>Add a card and Holo tracks what it's worth, every day, automatically.
-     Tomorrow morning you'll get your first price movement.</p>
+  <div class="ob-badge">Early access beta</div>
+  <h1>You're in.</h1>
+  <p>Holo tracks what your Pokémon cards are worth, every day, automatically.
+     It's early — here's what that means.</p>
+  <div class="ob-known">
+    <div>Prices refresh <b>once a day</b>, not live.</div>
+    <div>Market movers need <b>two days</b> of data before they show anything.</div>
+    <div>A few cards are <b>missing art</b>. That's the API, not you.</div>
+    <div>Found something broken? <a href="/profile#feedback">Tell me</a> — that's the point of the beta.</div>
+  </div>
   <a class="btn primary" href="{{ url_for('add_page') }}">Add your first card</a>
   <div class="ob-steps">
     <div><b>1</b> Search any card by name</div>
@@ -99,7 +106,7 @@
 
 
 {% if activity %}
-<section class="sec"><h2>Recent activity</h2>
+<section class="sec"><h2>Recent activity <a href="/insights" class="tiny muted" style="float:right;text-decoration:underline">Insights</a></h2>
 {% for a in activity %}
 <div class="row">
   <img {{ img_attrs(a) }} alt="">
