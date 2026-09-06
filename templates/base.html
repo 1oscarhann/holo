@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#141418">
 <title>{% block title %}Holo{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ sv('app.css') }}">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#0b0d12">
@@ -32,8 +32,10 @@
 {% block body %}{% endblock %}
 </main>
 {% if page is defined %}
+{% if HERE not in ("/add", "/scan") %}
 <a href="/add" class="fab" aria-label="Add a card">
   <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></a>
+{% endif %}
 <nav class="tabs" aria-label="Sections">
   {% for key, label, url, icon in TABS %}
   <a href="{{ url }}" class="{{ 'on' if NAVTAB == key }}">

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 <section class="sec" style="padding-top:24px">
-  <h2>Beta stats <span class="tiny muted">{{ VERSION }}</span></h2>
+  <h2>Admin <span class="tiny muted">{{ VERSION }}</span></h2>
   <div class="statgrid">
     <div><b class="num">{{ t.users }}</b><span>Accounts</span></div>
     <div><b class="num">{{ t.new_users }}</b><span>New this week</span></div>
@@ -29,13 +29,10 @@
 <section class="sec"><h2>People</h2>
   {% for p in people %}
   <div class="row slim">
-    <div class="t"><div class="n">{{ p.username }}</div>
+    <div class="t"><div class="n">{{ p.username }}{% if p.premium %} <span class="prembadge">premium</span>{% endif %}</div>
       <div class="m">{{ p.cards }} card{{ '' if p.cards == 1 else 's' }} · {{ p.events }} events</div></div>
     <div class="r"><div class="p tiny muted">
       {% if p.last_seen %}{{ p.last_seen.strftime('%d %b %H:%M') }}{% else %}never opened{% endif %}</div></div>
-    <button class="pmtog {{ 'on' if p.premium }}" data-user="{{ p.username }}"
-            data-on="{{ '1' if p.premium else '0' }}"
-            title="{{ 'Premium — tap to revoke' if p.premium else 'Free — tap to grant premium' }}">★</button>
   </div>
   {% endfor %}
 </section>
@@ -67,16 +64,3 @@
 </section>
 {% endblock %}
 
-{% block script %}
-<script>
-document.querySelectorAll('.pmtog').forEach(b => b.onclick = async () => {
-  const on = b.dataset.on !== '1';
-  b.disabled = true;
-  try { await api('/api/admin/premium','POST',{username:b.dataset.user, on});
-        b.dataset.on = on ? '1' : '0'; b.classList.toggle('on', on);
-        toast(`${b.dataset.user} ${on ? 'is now premium' : 'back to free'}`); }
-  catch { toast('Could not change that'); }
-  b.disabled = false;
-});
-</script>
-{% endblock %}

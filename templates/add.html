@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block body %}
+<a class="scanlink" href="/scan">
+  <svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2"/><rect x="8" y="9" width="8" height="6" rx="1"/></svg>
+  <span><b>Scan a card</b>Point your camera instead of typing</span>
+</a>
 <div class="search"><input id="q" type="search" placeholder="Search any card, e.g. Umbreon" autocomplete="off" autofocus></div>
 <div class="results" id="res"><div class="hint">Type a card name.<br>English sets, plus Japanese and Chinese where TCGdex has them.</div></div>
 

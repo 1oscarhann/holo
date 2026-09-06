@@ -39,7 +39,7 @@ EUR_GBP = float(os.environ.get("EUR_GBP", "0.85"))
 USD_GBP = float(os.environ.get("USD_GBP", "0.78"))
 PRICE_TTL_HOURS = 20
 PTCGIO_IMG = "https://images.pokemontcg.io"
-VERSION = os.environ.get("APP_VERSION", "0.13.0-beta")
+VERSION = os.environ.get("APP_VERSION", "0.16.0-beta")
 
 # Cloudflare Web Analytics. Only needed for the manual setup (site not proxied,
 # e.g. hitting the onrender.com host directly). If the domain is orange-clouded,
@@ -1257,9 +1257,10 @@ PAGES = {
     "/sets":      ("All sets",     "/market"),
     "/sold":      ("Sold",         "/profile"),
     "/import":    ("Import cards", "/profile"),
-    "/stats":     ("Beta stats",   "/profile"),
+    "/stats":     ("Admin",        "/profile"),
     "/compare":   ("Compare",      "/market"),
     "/add":       ("Add a card",   "/"),
+    "/scan":      ("Scan a card",  "/"),
 }
 
 
@@ -1290,7 +1291,8 @@ def inject_nav():
 
 @app.context_processor
 def inject_version():
-    return {"VERSION": VERSION, "sv": static_v, "CF_TOKEN": CF_ANALYTICS_TOKEN}
+    return {"VERSION": VERSION, "sv": static_v, "CF_TOKEN": CF_ANALYTICS_TOKEN,
+            "IS_ADMIN": is_admin()}
 
 
 _SV_CACHE = {}
@@ -1564,6 +1566,87 @@ def import_page():
     return jsonify(added=added, failed=failed[:20], total=len(rows))
 
 
+# ------------------------------------------------------------------ card scan
+
+
+@app.route("/scan")
+@login_required
+def scan_page():
+    if not is_premium():
+        return render_template("locked.html", feature="Camera scan",
+                               blurb="Point your camera at a card and Holo reads "
+                                     "the name and set number, then finds it for you.",
+                               page="portfolio")
+    return render_template("scan.html", page="portfolio")
+
+
+@app.route("/api/scan", methods=["POST"])
+@login_required
+def api_scan():
+    """Match OCR output to real cards.
+
+    The phone reads two strings off the card: the name across the top and the
+    collector number at the bottom. Neither is reliable on its own — OCR turns
+    'Umbreon ex' into 'Urnbreon ex' and '161/180' into '16l/l80' — so we search
+    on the name, then use the number to narrow, and always return candidates
+    for the person to confirm rather than adding anything automatically.
+    """
+    d = request.get_json(force=True) or {}
+    raw_name = re.sub(r"[^A-Za-z' \-]", " ", (d.get("name") or "")).strip()
+    raw_name = re.sub(r"\s+", " ", raw_name)
+    # "161/180" is the usual form, but promos and some subsets print a bare
+    # number, so fall back to any 1-3 digit run. OCR reads 1 as l or I and 0 as O.
+    digits = (d.get("number") or "").replace("l", "1").replace("I", "1").replace("O", "0")
+    m = re.search(r"(\d{1,3})\s*/\s*\d{1,3}", digits) or re.search(r"\b(\d{1,3})\b", digits)
+    number = str(int(m.group(1))) if m else None
+
+    if len(raw_name) < 3:
+        return jsonify(candidates=[], name=raw_name, number=number,
+                       error="Couldn't read the card name. Try again with more light.")
+
+    # TCGdex matches substrings, so a partly-misread name still works: "mbreon"
+    # finds Umbreon. But it needs a *clean* substring — "pe mbreon" finds nothing.
+    # Try the whole string, then the longest tokens, longest first. Short tokens
+    # are skipped: "pe" matches Annihilape and Morpeko and buries the real card.
+    attempts = [raw_name]
+    toks = sorted({t for t in raw_name.split() if len(t) >= 4}, key=len, reverse=True)
+    attempts += toks
+    # OCR usually mangles the end of a word ("Charizard" -> "Charizara"), so also
+    # try shortening prefixes of the longest token. Capped: each try is a request.
+    if toks:
+        longest = toks[0]
+        attempts += [longest[:k] for k in range(len(longest) - 1, 4, -1)][:4]
+    res, used = [], raw_name
+    for a in attempts:
+        res = tcgdex("cards", name=a) or []
+        if res:
+            used = a
+            break
+
+    cards = []
+    for c in res:
+        set_id = c["id"].rsplit("-", 1)[0]
+        meta = set_meta(set_id)
+        if meta.get("serie") in DIGITAL_SERIES:
+            continue
+        cards.append({"id": c["id"], "name": c.get("name"), "local_id": c.get("localId"),
+                      "image": c.get("image"), "set_id": set_id,
+                      "set_name": meta.get("name") or set_id,
+                      "set_abbr": meta.get("abbr"), "release": meta.get("release"),
+                      "set_total": meta.get("total")})
+
+    if number:
+        exact = [c for c in cards if str(c["local_id"]) == number]
+        if exact:
+            cards = exact + [c for c in cards if c not in exact]
+
+    ql = used.lower()
+    cards.sort(key=lambda c: (0 if str(c["local_id"]) == number else 1, rank_key(c, ql)))
+    out = [with_images(c) for c in cards[:12]]
+    log_event("scan", name=raw_name, number=number, hits=len(out))
+    return jsonify(candidates=out, name=raw_name, number=number, matched=used)
+
+
 # --------------------------------------------------------------- sealed / misc
 
 
@@ -1615,10 +1698,10 @@ def log_pageview(resp):
 
 
 def is_admin():
-    if not session.get("uid"):
+    """Fails closed. An earlier version returned True when ADMIN_USER was unset,
+    which meant every logged-in beta tester was an admin on a fresh deploy."""
+    if not session.get("uid") or not ADMIN_USER:
         return False
-    if not ADMIN_USER:
-        return True          # unset: single-user setup, don't lock yourself out
     return session.get("username") == ADMIN_USER
 
 
@@ -1634,9 +1717,10 @@ def is_premium():
 @login_required
 def redeem_premium():
     code = ((request.get_json(force=True) or {}).get("code") or "").strip()
-    if not PREMIUM_CODE:
+    active = PREMIUM_CODE
+    if not active:
         return jsonify(error="No code is active right now."), 400
-    if code.lower() != PREMIUM_CODE.lower():
+    if code.lower() != active.lower():
         log_event("premium_code_failed")
         return jsonify(error="That code isn't right."), 400
     db().execute("UPDATE users SET premium=true, premium_since=now() WHERE id=%s", (uid(),))
@@ -1645,19 +1729,6 @@ def redeem_premium():
     return jsonify(ok=True)
 
 
-@app.route("/api/admin/premium", methods=["POST"])
-@login_required
-def admin_set_premium():
-    if not is_admin():
-        abort(403)
-    d = request.get_json(force=True) or {}
-    db().execute("""UPDATE users SET premium=%s,
-                    premium_since=CASE WHEN %s THEN now() ELSE NULL END
-                    WHERE username=%s""",
-                 (bool(d.get("on")), bool(d.get("on")), d.get("username")))
-    db().commit()
-    log_event("admin_premium", target=d.get("username"), on=bool(d.get("on")))
-    return jsonify(ok=True)
 
 
 @app.route("/stats")

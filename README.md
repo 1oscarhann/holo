@@ -99,15 +99,63 @@ There is no checkout yet. Premium is unlocked with a code:
 
     PREMIUM_CODE=whatever-you-like
 
-Share it with whoever should have premium; change it to revoke. Users redeem it
-on the You tab. As admin you can also grant or revoke per person from `/stats`
-by tapping the star next to their name.
+Set it in the environment only. Share it with whoever should have premium;
+change the variable and redeploy to revoke.
 
-`ADMIN_USER` gates `/stats` and the admin actions. If it is unset, any logged-in
-user is treated as admin — set it before sharing the app.
+There are deliberately **no admin write endpoints**. An earlier build let an
+admin edit the premium code, delete users and reset passwords over HTTP, behind
+a check that returned true when `ADMIN_USER` was unset — so on a fresh deploy
+every logged-in user was an admin, and the password-reset route was an account
+takeover waiting to happen. All of it was removed.
+
+`/stats` is now read-only and `is_admin()` fails closed: with no `ADMIN_USER`,
+nobody is an admin. Granting premium by hand is a SQL statement:
+
+    UPDATE users SET premium = true, premium_since = now() WHERE username = 'x';
 
 ## Landing page
 
 `/` serves a public landing page when logged out and the portfolio when logged
 in, so a shared link no longer drops strangers straight into a signup form.
 Screenshots live in `static/img/` and are regenerated from real screens.
+
+## Camera scan (premium)
+
+`/scan` reads two regions off a card photo with Tesseract.js **in the browser**,
+so scans cost nothing per use and no image ever leaves the phone. It OCRs the
+name band at the top and the collector number at the bottom, then posts those
+two strings to `/api/scan`.
+
+Matching is deliberately forgiving, because OCR is not:
+
+- TCGdex matches substrings, so a partly-misread name still resolves
+  ("mbreon" finds Umbreon).
+- Junk tokens are skipped. An early version fell back to the *first* word, so
+  "pe mbreon" searched "pe" and returned Annihilape and Morpeko.
+- OCR mangles word endings, so shortened prefixes are tried too
+  ("Charizara" -> "Charizar" -> Charizard).
+- 1 reads as l or I, 0 as O; digits are normalised before parsing.
+- The collector number narrows the results but never decides alone.
+
+Nothing is ever added automatically — the person picks from the candidates.
+
+## Design
+
+v0.16 rebuilt the visual system. The previous look — warm-grey dark palette,
+glow headers, blurred art backdrops, a rainbow holo overlay, sixteen different
+corner radii — read as the default "premium" template every generated app ships
+with. It was removed wholesale.
+
+What replaced it:
+
+- Pure black. One accent (`--acc`, acid lime) used only for the active tab,
+  primary actions, positive change, and owned cards.
+- Numerals in JetBrains Mono. Prices, values and stats all share one voice.
+- Two radii, `--r` (4px) and `--r2` (6px). Nothing else.
+- Hairline dividers instead of card-in-card surfaces.
+- Card art displayed large and plain. Nothing sits on top of it.
+- Uppercase 12px section labels, so the hierarchy reads at a glance.
+
+The set completion grid also had a real bug: missing cards were dimmed to
+`brightness(.22)`, which is indistinguishable from black on a phone. They are
+now greyscale at `.62`, so the whole set reads as a checklist.
