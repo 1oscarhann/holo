@@ -1,9 +1,12 @@
 :root{
-  /* Pure black, one acid accent, hairlines. Reads as a tool, not a brochure. */
-  --bg:#000; --bg2:#0d0d0d; --bg3:#161616; --line:#1e1e1e; --line2:#2a2a2a;
-  --ink:#fff; --ink2:#9b9b9b; --ink3:#5a5a5a;
-  --acc:#c8ff3d; --acc-ink:#0a0a0a;
-  --up:#c8ff3d; --down:#ff5d5d; --paper:#fff;
+  /* Cool charcoal and a desaturated steel blue. Reads as an instrument panel,
+     not a brochure. Deliberately low-chroma: a page of saturated card art is
+     the only colour that should shout, and an acid accent fought all of it.
+     Neutrals carry a blue cast so the accent sits in the same family. */
+  --bg:#0b0d10; --bg2:#12151a; --bg3:#1a1e25; --line:#1e232b; --line2:#2b323d;
+  --ink:#eef1f5; --ink2:#98a1ad; --ink3:#5b636f;
+  --acc:#8fb3d9; --acc-ink:#0a0d11;
+  --up:#6fb894; --down:#d4776a; --paper:#fff;
   --r:4px; --r2:6px;
   --mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,monospace;
   --pad:16px; --tab:60px;
@@ -12,7 +15,7 @@
 html{-webkit-text-size-adjust:100%}
 body{
   background:var(--bg); color:var(--ink);
-  font:16px/1.4 "Instrument Sans",system-ui,sans-serif;
+  font:16px/1.4 Archivo,system-ui,-apple-system,sans-serif;
   font-feature-settings:"tnum" 1,"ss01" 1;
   -webkit-font-smoothing:antialiased;
   padding-bottom:calc(var(--tab) + env(safe-area-inset-bottom));
@@ -411,11 +414,6 @@ nav.tabs a.plus{display:none}
   stroke-width:2;stroke-linecap:round}
 .gsearch span{font-size:15px}
 .gsearch:active{border-color:var(--ink3)}
-/* ==== landing page ====================================================== */
-body.landing{padding:0;max-width:none}
-@media (min-width:620px){
-  .lhero h1{font-size:46px}
-}
 /* ---- premium code + admin toggle --------------------------------------- */
 .prem{padding:16px;border:1px solid var(--line);border-radius:var(--r2);background:var(--bg2)}
 .prem b{display:block;font-size:15px;font-weight:600;margin-bottom:5px}
@@ -729,12 +727,16 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
    costs nothing but a font file.
    ========================================================================= */
 :root{
-  --display:"Instrument Serif",Georgia,"Times New Roman",serif;
-  --sans:"Instrument Sans",system-ui,-apple-system,sans-serif;
-  /* Foil. Only ever on type, never over card art — the art is the product.
-     Same stops the share-card canvas already draws with. */
-  --foil:linear-gradient(100deg,#f2f0ea 0%,#c7b3ff 22%,#9fe8ff 42%,
-                                #ffd6a5 62%,#b6ffd0 80%,#f2f0ea 100%);
+  /* One family, not three. Archivo is a sturdy grotesque with enough
+     personality to carry a headline on weight alone, so hierarchy comes from
+     size and weight rather than from switching typeface — which is what made
+     the serif read as decoration. Numerals stay mono. */
+  --sans:Archivo,system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  --display:var(--sans);
+  /* Foil, kept cool so it sits inside the palette instead of on top of it.
+     Only ever on type, never over card art — the art is the product. */
+  --foil:linear-gradient(100deg,#eef1f5 0%,#a9c4e6 26%,#c9b8ee 48%,
+                                #9fd8e8 72%,#eef1f5 100%);
 }
 body{font-family:var(--sans)}
 
@@ -757,8 +759,8 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 
 /* nav */
 .lnav{display:flex;align-items:center;gap:12px;padding-top:20px;padding-bottom:20px}
-.lbrand{display:flex;align-items:baseline;gap:9px;font-family:var(--display);
-  font-size:27px;letter-spacing:-.01em}
+.lbrand{display:flex;align-items:baseline;gap:9px;font-size:23px;font-weight:700;
+  letter-spacing:-.035em}
 .lbrand i{font-family:var(--sans);font-style:normal;font-size:9.5px;font-weight:600;
   letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);
   border:1px solid var(--line2);border-radius:2px;padding:2px 5px}
@@ -770,9 +772,12 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 .lhero{padding-top:48px;padding-bottom:44px;max-width:1080px}
 .lkick{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
   color:var(--acc);margin-bottom:20px}
-.lhero h1{font-family:var(--display);font-weight:400;font-size:clamp(44px,11.5vw,86px);
-  line-height:.98;letter-spacing:-.022em;margin-bottom:22px;max-width:14ch}
-.lhero h1 em{font-style:italic;color:var(--ink)}
+/* Archivo carries a headline on weight, so the emphasis that used to be an
+   italic serif is now the accent on the half of the sentence that is the
+   actual pitch. */
+.lhero h1{font-weight:700;font-size:clamp(35px,9.1vw,72px);line-height:1.03;
+  letter-spacing:-.042em;margin-bottom:22px;max-width:15ch}
+.lhero h1 em{font-style:normal;color:var(--acc)}
 .lsub{font-size:clamp(16px,4.2vw,19px);line-height:1.55;color:var(--ink2);
   max-width:46ch;margin-bottom:30px}
 .lact{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px}
@@ -834,7 +839,7 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 .sp-grid span{aspect-ratio:245/342;border-radius:2px;display:grid;place-items:center;
   font-family:var(--mono);font-size:8px;letter-spacing:-.02em}
 .sp-grid .has{background:#1d2333;color:#8ea0c8;box-shadow:inset 0 0 0 1px #2a3348}
-.sp-grid .miss{background:#0b0b0b;color:#2b2b2b;box-shadow:inset 0 0 0 1px #171717}
+.sp-grid .miss{background:#0d1014;color:#2f353e;box-shadow:inset 0 0 0 1px #191d24}
 
 /* market rows */
 .sp-rows{list-style:none;margin-top:8px}
@@ -847,15 +852,14 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
   min-width:5.4em;text-align:right}
 .leyebrow{font-size:10.5px;font-weight:600;letter-spacing:.16em;
   text-transform:uppercase;color:var(--ink3);margin-bottom:12px}
-.lcut h2{font-family:var(--display);font-weight:400;
-  font-size:clamp(28px,6.8vw,42px);line-height:1.04;letter-spacing:-.02em;
-  margin-bottom:12px;max-width:17ch}
+.lcut h2{font-weight:700;font-size:clamp(26px,6.2vw,38px);line-height:1.08;
+  letter-spacing:-.035em;margin-bottom:12px;max-width:18ch}
 .lcut p{font-size:15.5px;line-height:1.6;color:var(--ink2);max-width:44ch}
 
 /* everything else, kept but compact — no feature is dropped, they are ranked */
 .lgrid{padding-top:72px}
-.lgrid-h{font-family:var(--display);font-weight:400;font-size:clamp(26px,6vw,34px);
-  letter-spacing:-.02em;margin-bottom:6px}
+.lgrid-h{font-weight:700;font-size:clamp(23px,5.4vw,30px);
+  letter-spacing:-.035em;margin-bottom:6px}
 .lgrid ul{list-style:none;display:grid;grid-template-columns:1fr;
   border-top:1px solid var(--line)}
 .lgrid li{padding:14px 0;border-bottom:1px solid var(--line)}
@@ -865,8 +869,8 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 
 /* close */
 .lend{padding-top:76px;padding-bottom:64px}
-.lend h2{font-family:var(--display);font-weight:400;font-size:clamp(34px,9vw,58px);
-  letter-spacing:-.022em;line-height:1;margin-bottom:14px}
+.lend h2{font-weight:700;font-size:clamp(31px,8vw,52px);
+  letter-spacing:-.04em;line-height:1.02;margin-bottom:14px}
 .lend p{font-size:16px;color:var(--ink2);margin-bottom:26px;max-width:40ch}
 .lend .lnote{display:block;margin-top:16px}
 
@@ -874,7 +878,7 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 .lfoot{border-top:1px solid var(--line);padding-top:26px;padding-bottom:52px;
   display:grid;gap:10px}
 .lfoot span{font-size:12px;line-height:1.55;color:var(--ink3);max-width:62ch}
-.lfoot-b{font-family:var(--display);font-size:15px!important;color:var(--ink2)!important}
+.lfoot-b{font-size:13px!important;font-weight:600;color:var(--ink2)!important}
 
 @media (min-width:760px){
   .landing section,.landing header,.landing footer{padding-left:40px;padding-right:40px}

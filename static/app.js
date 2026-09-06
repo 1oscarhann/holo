@@ -50,7 +50,7 @@ function drawLine(canvas, points, opts = {}) {
   const X = i => padX + (i / (points.length - 1)) * (W - padX * 2);
   const Y = v => H - padY - ((v - lo) / (hi - lo)) * (H - padY * 2);
   const up = ys[ys.length - 1] >= ys[0];
-  const col = opts.color || (up ? '#8fe3b8' : '#f2a08a');
+  const col = opts.color || (up ? '#6fb894' : '#d4776a');
 
   // fill
   const g = ctx.createLinearGradient(0, 0, 0, H);

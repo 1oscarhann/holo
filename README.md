@@ -191,13 +191,33 @@ with. It was removed wholesale.
 
 What replaced it:
 
-- Pure black. One accent (`--acc`, acid lime) used only for the active tab,
-  primary actions, positive change, and owned cards.
-- Numerals in JetBrains Mono. Prices, values and stats all share one voice.
 - Two radii, `--r` (4px) and `--r2` (6px). Nothing else.
 - Hairline dividers instead of card-in-card surfaces.
 - Card art displayed large and plain. Nothing sits on top of it.
 - Uppercase 12px section labels, so the hierarchy reads at a glance.
+- Numerals in JetBrains Mono. Prices, values and stats share one voice.
+
+v0.17 kept all of that and changed the two things that carried the most
+personality: the colour and the typeface.
+
+**Cool charcoal and steel, not black and acid lime.** `--bg` is `#0b0d10` and
+the accent is a desaturated slate blue, `#8fb3d9`. The neutrals carry a blue
+cast so the accent sits in the same family rather than on top of it. The point
+is low chroma: a page of Pokémon card art is already saturated, and an acid
+accent competed with every card on the screen instead of framing it. Green
+(`--up`) and clay red (`--down`) are now separate from the accent and mean only
+one thing — direction.
+
+The portfolio chart draws a rising line in the *accent*, not in the up-green.
+Green everywhere would put the brand colour nowhere on the screen that matters
+most, and an instrument draws its own line in its own colour and saves the
+semantic hues for the deltas. A falling line still goes red: that is the one
+state worth interrupting for.
+
+**One typeface, not three.** Archivo carries everything except numerals, which
+stay mono. Hierarchy comes from size and weight rather than from switching
+family. An earlier v0.17 pass used a display serif for headlines; it read as
+decoration rather than structure and was dropped.
 
 The set completion grid also had a real bug: missing cards were dimmed to
 `brightness(.22)`, which is indistinguishable from black on a phone. They are
