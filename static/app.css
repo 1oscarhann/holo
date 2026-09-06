@@ -8,7 +8,11 @@
   --acc:#8fb3d9; --acc-ink:#0a0d11;
   --up:#6fb894; --down:#d4776a; --paper:#fff;
   --r:4px; --r2:6px;
-  --mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,monospace;
+  /* The figure face. Was JetBrains Mono — a *coding* face, with terminal
+     letter-spacing and slashed zeros, which made a portfolio total read like
+     stdout rather than money. Figures now come from the brand face; body
+     already sets font-feature-settings:"tnum", so columns still align. */
+  --fig:var(--sans);
   --pad:16px; --tab:60px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -61,7 +65,7 @@ button,input,select{font:inherit;color:inherit}
 .sec h2 a{color:var(--ink3);font-weight:400;font-size:14px}
 .figs{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .fig .k{color:var(--ink2);font-size:14px}
-.fig .v{font-size:22px;font-weight:600;letter-spacing:-.01em;margin-top:2px}
+.fig .v{font-size:22px;font-weight:600;letter-spacing:-.025em;margin-top:2px}
 .fig .v.up{color:var(--up)}
 .fig .v.down{color:var(--down)}
 /* rows: image + text + number */
@@ -516,7 +520,7 @@ nav.tabs a.plus{display:none}
 }
 /* ==== revamp: type ======================================================= */
 .num,.value,.hero .value,.c.num,.p.num,.statgrid b,.setstats b,.figs .v,.cmp-c .v,
-.gmeta b,.amt b,.donutmid b{font-family:var(--mono);font-weight:500;letter-spacing:-.02em}
+.gmeta b,.amt b,.donutmid b{font-family:var(--fig);font-weight:500;letter-spacing:-.02em}
 h1,h2,.n{letter-spacing:-.01em}
 /* ==== revamp: core surfaces ============================================== */
 body{background:var(--bg)}
@@ -536,13 +540,17 @@ body{background:var(--bg)}
 /* hero */
 .hero{padding:26px 0 8px;position:relative;overflow:visible}
 .hero .who{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
-.hero .value{font-size:46px;line-height:1;margin:8px 0 14px;font-weight:500;
+/* 500 and -.02em were tuned for a monospace face, which carries its own weight
+   through fixed advance widths. A proportional face at 46px needs more of both
+   to hold the same presence. */
+.hero .value{font-size:46px;line-height:1;margin:8px 0 14px;font-weight:600;
+  letter-spacing:-.038em;
   background:none;-webkit-text-fill-color:currentColor;color:var(--ink)}
 .hero .value small{font-size:24px;color:var(--ink3);margin-right:2px;vertical-align:8px}
 .chips{display:flex;gap:6px}
 .chip{border:1px solid var(--line2);background:transparent;border-radius:var(--r);
   padding:6px 9px;font-size:12px;color:var(--ink2)}
-.chip b{font-family:var(--mono);font-weight:500;margin-left:5px;color:var(--ink)}
+.chip b{font-family:var(--fig);font-weight:500;margin-left:5px;color:var(--ink)}
 .chip.up b{color:var(--up)}
 .chip.down b{color:var(--down)}
 /* top holdings strip — replaces the fan */
@@ -552,7 +560,7 @@ body{background:var(--bg)}
 .holdstrip::-webkit-scrollbar{display:none}
 .holdstrip a{flex:none;width:112px;scroll-snap-align:start}
 .holdstrip img{width:100%;border-radius:var(--r);display:block;background:var(--bg2)}
-.holdstrip b{display:block;font-family:var(--mono);font-size:12.5px;margin-top:6px;font-weight:500}
+.holdstrip b{display:block;font-family:var(--fig);font-size:12.5px;margin-top:6px;font-weight:500}
 .holdstrip span{display:block;font-size:11px;color:var(--ink2);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 /* buttons */
@@ -599,15 +607,15 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 .holocard img{border-radius:var(--r2)}
 .holo-shine,.holo-glare{display:none!important}
 .cardinfo .pill{border-radius:var(--r);background:var(--bg2);border-color:var(--line);font-size:11.5px}
-.atk .dmg{font-family:var(--mono)}
-.kv b{font-family:var(--mono);font-size:13px}
+.atk .dmg{font-family:var(--fig)}
+.kv b{font-family:var(--fig);font-size:13px}
 /* set completion: missing cards visible in grey, not near-black */
 .grid{gap:6px}
 .cell{border-radius:var(--r);background:var(--bg2)}
 .cell.miss img{filter:grayscale(1) brightness(.62) contrast(.9)}
 .cell.miss{opacity:1}
 .cell.have{outline:2px solid var(--acc);outline-offset:-2px;box-shadow:none}
-.cell .no{font-family:var(--mono);font-size:9.5px;background:linear-gradient(transparent,rgba(0,0,0,.85))}
+.cell .no{font-family:var(--fig);font-size:9.5px;background:linear-gradient(transparent,rgba(0,0,0,.85))}
 .cell.have .no{color:var(--acc)}
 .setmast h1{font-size:26px;font-weight:600;letter-spacing:-.02em}
 .setstats b{font-size:22px}
@@ -651,7 +659,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 .viewport{border-radius:var(--r2)}
 .shutter{background:var(--acc);box-shadow:0 0 0 2px var(--acc)}
 .money::before{color:var(--ink3)}
-.verstamp{font-family:var(--mono);font-size:11px}
+.verstamp{font-family:var(--fig);font-size:11px}
 /* ==== portfolio: the graph is the centrepiece ============================ */
 /* The chart used to be 150px tall, wedged between the card strip above it and
    its own range buttons below. It is the reason the tab exists, so it now gets
@@ -665,11 +673,11 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 /* Idle it shows the visible window's move; scrubbing it follows the finger. */
 .chart-read{position:absolute;top:0;left:0;pointer-events:none;
   display:flex;flex-direction:column;gap:1px;transition:left .06s linear}
-.chart-read b{font-family:var(--mono);font-size:16px;font-weight:500;color:var(--ink);
-  letter-spacing:-.02em}
+.chart-read b{font-family:var(--fig);font-size:16px;font-weight:600;color:var(--ink);
+  letter-spacing:-.028em}
 .chart-read b.up{color:var(--up)}
 .chart-read b.down{color:var(--down)}
-.chart-read i{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--ink3);
+.chart-read i{font-style:normal;font-family:var(--fig);font-size:11px;color:var(--ink3);
   letter-spacing:.02em}
 .chart-read i.up{color:var(--up)}
 .chart-read i.down{color:var(--down)}
@@ -678,7 +686,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 .ranges{display:flex;gap:2px;padding:3px;background:var(--bg2);
   border:1px solid var(--line);border-radius:var(--r);flex:1}
 .ranges button{flex:1;background:transparent;border:0;border-radius:var(--r);
-  padding:7px 0;font-family:var(--mono);font-size:12px;font-weight:500;
+  padding:7px 0;font-family:var(--fig);font-size:12px;font-weight:500;
   letter-spacing:.02em;color:var(--ink3);cursor:pointer;transition:color .12s}
 .ranges button:hover{color:var(--ink2)}
 .ranges button.on{background:var(--acc);color:var(--acc-ink)}
@@ -705,11 +713,11 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 .topfive b{display:block;font-size:12.5px;margin-top:8px;color:var(--ink)}
 .topfive .nm{display:block;font-size:11.5px;color:var(--ink2);margin-top:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.topfive .mv{display:block;font-family:var(--mono);font-size:11px;color:var(--ink3);
+.topfive .mv{display:block;font-family:var(--fig);font-size:11px;color:var(--ink3);
   margin-top:2px;letter-spacing:-.01em}
 .topfive .mv.up{color:var(--up)}
 .topfive .mv.down{color:var(--down)}
-.topfive .tf:first-child b{font-size:19px}
+.topfive .tf:first-child b{font-size:19px;font-weight:600;letter-spacing:-.03em}
 .topfive .tf:first-child .nm{font-size:14px;color:var(--ink);margin-top:3px}
 .topfive .tf:first-child .mv{font-size:12px;margin-top:3px}
 @media (min-width:560px){
@@ -796,7 +804,7 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
   border-top:1px solid var(--line);margin-top:8px}
 .lfacts div{display:flex;align-items:baseline;gap:16px;padding:18px 0;
   border-bottom:1px solid var(--line)}
-.lfacts b{font-family:var(--mono);font-size:21px;font-weight:500;color:var(--acc);
+.lfacts b{font-family:var(--fig);font-size:21px;font-weight:500;color:var(--acc);
   letter-spacing:-.03em;flex:none;min-width:4.4em}
 .lfacts span{font-size:14px;color:var(--ink2);line-height:1.45}
 
@@ -812,32 +820,32 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 .sp-lab{font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
   color:var(--ink3);display:flex;justify-content:space-between;align-items:baseline}
 .sp-lab em{font-style:normal;letter-spacing:.06em;color:var(--ink3)}
-.sp-val{font-family:var(--mono);font-size:34px;font-weight:500;letter-spacing:-.035em;
+.sp-val{font-family:var(--fig);font-size:34px;font-weight:500;letter-spacing:-.035em;
   margin:12px 0 12px;line-height:1}
 .sp-val small{font-size:19px;color:var(--ink3);margin-right:2px;vertical-align:5px}
 .sp-chips{display:flex;gap:6px;flex-wrap:wrap}
 .sp-chips span{border:1px solid var(--line2);border-radius:var(--r);padding:5px 8px;
   font-size:11px;color:var(--ink2)}
-.sp-chips b{font-family:var(--mono);font-weight:500;color:var(--up);margin-left:4px}
+.sp-chips b{font-family:var(--fig);font-weight:500;color:var(--up);margin-left:4px}
 .sp-chart{width:100%;height:96px;display:block;margin:16px 0 12px}
 .sp-line{fill:none;stroke:var(--acc);stroke-width:2;vector-effect:non-scaling-stroke;
   stroke-linejoin:round}
 .sp-fill{fill:var(--acc);opacity:.11;stroke:none}
 .sp-tabs{display:flex;gap:2px;padding:3px;background:var(--bg3);
   border:1px solid var(--line);border-radius:var(--r)}
-.sp-tabs i{flex:1;text-align:center;font-style:normal;font-family:var(--mono);
+.sp-tabs i{flex:1;text-align:center;font-style:normal;font-family:var(--fig);
   font-size:11px;padding:6px 0;color:var(--ink3);border-radius:var(--r)}
 .sp-tabs i.on{background:var(--acc);color:var(--acc-ink)}
 
 /* set completion */
 .sp-setline{display:flex;align-items:baseline;gap:8px;margin:12px 0 14px}
-.sp-setline b{font-family:var(--mono);font-size:24px;font-weight:500;letter-spacing:-.03em}
+.sp-setline b{font-family:var(--fig);font-size:24px;font-weight:500;letter-spacing:-.03em}
 .sp-setline span{font-size:12px;color:var(--ink3)}
 .sp-setline i{flex:1;height:2px;background:var(--acc);margin-left:6px;
   align-self:center;max-width:40%}
 .sp-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px}
 .sp-grid span{aspect-ratio:245/342;border-radius:2px;display:grid;place-items:center;
-  font-family:var(--mono);font-size:8px;letter-spacing:-.02em}
+  font-family:var(--fig);font-size:8px;letter-spacing:-.02em}
 .sp-grid .has{background:#1d2333;color:#8ea0c8;box-shadow:inset 0 0 0 1px #2a3348}
 .sp-grid .miss{background:#0d1014;color:#2f353e;box-shadow:inset 0 0 0 1px #191d24}
 
@@ -847,8 +855,8 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
   border-bottom:1px solid var(--line)}
 .sp-rows li:last-child{border-bottom:0}
 .sp-n{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sp-rows b{font-family:var(--mono);font-size:12.5px;font-weight:500}
-.sp-rows i{font-family:var(--mono);font-style:normal;font-size:12.5px;color:var(--ink3);
+.sp-rows b{font-family:var(--fig);font-size:12.5px;font-weight:500}
+.sp-rows i{font-family:var(--fig);font-style:normal;font-size:12.5px;color:var(--ink3);
   min-width:5.4em;text-align:right}
 .leyebrow{font-size:10.5px;font-weight:600;letter-spacing:.16em;
   text-transform:uppercase;color:var(--ink3);margin-bottom:12px}
@@ -896,3 +904,113 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
   .lgrid li:nth-last-child(2){border-bottom:0}
   .lgrid li:last-child{border-bottom:0}
 }
+
+
+/* =========================================================================
+   v0.17 — themes
+   Three rounds of me picking a palette and a face for someone else went
+   nowhere, so the choice belongs to the person looking at it. Every theme is
+   a complete token set: no theme leans on another's value, so adding one is
+   additive and cannot half-apply. `data-theme` and `data-font` are stamped on
+   <html> before first paint by the inline script in base.html.
+
+   The figure face deliberately follows --sans, so choosing a typeface also
+   chooses what the portfolio total looks like. That number is the largest
+   thing on the screen and it was the one thing not switchable before.
+   ========================================================================= */
+
+/* ---- palettes ------------------------------------------------------- */
+:root,
+[data-theme="ultramarine"]{
+  --bg:#06080f; --bg2:#0f1320; --bg3:#131829; --line:#171d30; --line2:#232b45;
+  --ink:#eef1fb; --ink2:#949cb8; --ink3:#575e78;
+  --acc:#4d7cff; --acc-ink:#f2f5ff; --up:#3ecf9a; --down:#ff5c72;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="steel"]{
+  --bg:#0b0d10; --bg2:#12151a; --bg3:#1a1e25; --line:#1e232b; --line2:#2b323d;
+  --ink:#eef1f5; --ink2:#98a1ad; --ink3:#5b636f;
+  --acc:#8fb3d9; --acc-ink:#0a0d11; --up:#6fb894; --down:#d4776a;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="acid"]{
+  --bg:#000; --bg2:#0d0d0d; --bg3:#161616; --line:#1e1e1e; --line2:#2a2a2a;
+  --ink:#fff; --ink2:#9b9b9b; --ink3:#5a5a5a;
+  --acc:#c8ff3d; --acc-ink:#0a0a0a; --up:#c8ff3d; --down:#ff5d5d;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="ember"]{
+  --bg:#0d0907; --bg2:#161110; --bg3:#1d1512; --line:#241a16; --line2:#33251f;
+  --ink:#f7f0ea; --ink2:#a89890; --ink3:#6b5c55;
+  --acc:#ff6a3d; --acc-ink:#140a06; --up:#5fbf87; --down:#ff5252;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="gold"]{
+  --bg:#0c0b09; --bg2:#151310; --bg3:#1a1815; --line:#211e19; --line2:#302b23;
+  --ink:#f3efe6; --ink2:#a49c8b; --ink3:#6a6353;
+  --acc:#d9a441; --acc-ink:#14110a; --up:#7fb96b; --down:#cf6a52;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="jade"]{
+  --bg:#05100c; --bg2:#0b1a14; --bg3:#0f2019; --line:#12241c; --line2:#1d3529;
+  --ink:#eaf5ef; --ink2:#8fa89b; --ink3:#54695e;
+  --acc:#35d6a0; --acc-ink:#04140d; --up:#35d6a0; --down:#ef6d6d;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="mono"]{
+  --bg:#08080a; --bg2:#111114; --bg3:#17171a; --line:#1c1c20; --line2:#2a2a30;
+  --ink:#f4f4f6; --ink2:#96969e; --ink3:#5c5c64;
+  --acc:#f4f4f6; --acc-ink:#08080a; --up:#f4f4f6; --down:#9a9aa2;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+/* Light. Every card tracker is dark; this is the one direction none of them
+   take. Missing cards have to be dimmed *up* here, not down — brightness(.62)
+   on a light ground reads as selected rather than absent. */
+[data-theme="vault"]{
+  --bg:#f2efe8; --bg2:#eae6dd; --bg3:#e2ddd1; --line:#dcd7ca; --line2:#c9c2b1;
+  --ink:#16151a; --ink2:#5f5b52; --ink3:#8d877b;
+  --acc:#9c2f2a; --acc-ink:#fdfbf6; --up:#2f7d4f; --down:#9c2f2a;
+  --miss-filter:grayscale(1) brightness(1.22) contrast(.72) opacity(.5);
+}
+[data-theme="gallery"]{
+  --bg:#f6f7f9; --bg2:#eef0f3; --bg3:#e7e9ee; --line:#e2e5ea; --line2:#ced3db;
+  --ink:#111418; --ink2:#5a6270; --ink3:#8b93a1;
+  --acc:#1b4dd6; --acc-ink:#fff; --up:#0f7a4d; --down:#c0392b;
+  --miss-filter:grayscale(1) brightness(1.22) contrast(.72) opacity(.5);
+}
+.cell.miss img{filter:var(--miss-filter,grayscale(1) brightness(.62) contrast(.9))}
+
+/* ---- faces ---------------------------------------------------------- */
+:root,[data-font="familjen"]{--sans:"Familjen Grotesk",system-ui,-apple-system,sans-serif}
+[data-font="archivo"]   {--sans:Archivo,system-ui,-apple-system,sans-serif}
+[data-font="schibsted"] {--sans:"Schibsted Grotesk",system-ui,-apple-system,sans-serif}
+[data-font="bricolage"] {--sans:"Bricolage Grotesque",system-ui,-apple-system,sans-serif}
+[data-font="chivo"]     {--sans:Chivo,system-ui,-apple-system,sans-serif}
+[data-font="intertight"]{--sans:"Inter Tight",system-ui,-apple-system,sans-serif}
+[data-font="instrument"]{--sans:"Instrument Sans",system-ui,-apple-system,sans-serif}
+[data-font="fraunces"]  {--sans:Fraunces,Georgia,serif}
+/* Fraunces is a serif; at display sizes it needs less weight than a grotesque
+   to hold the same presence, or the headline turns to soup. */
+[data-font="fraunces"] .lhero h1,[data-font="fraunces"] .lend h2,
+[data-font="fraunces"] .lcut h2,[data-font="fraunces"] .lgrid-h{font-weight:600}
+
+/* ---- the picker on /profile ----------------------------------------- */
+.themer{display:grid;gap:16px}
+.themer .grp > b{display:block;font-size:11px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink3);margin-bottom:9px}
+.swatches{display:flex;flex-wrap:wrap;gap:7px}
+.sw-b{display:flex;align-items:center;gap:7px;background:var(--bg2);
+  border:1px solid var(--line2);border-radius:var(--r);padding:6px 10px 6px 7px;
+  font-size:12.5px;color:var(--ink2);cursor:pointer;font:inherit;font-size:12.5px}
+.sw-b:hover{border-color:var(--ink3)}
+.sw-b[aria-pressed="true"]{border-color:var(--acc);color:var(--ink)}
+.sw-b .dot{width:24px;height:16px;border-radius:2px;flex:none;position:relative;
+  overflow:hidden;box-shadow:inset 0 0 0 1px var(--line2)}
+.sw-b .dot i{position:absolute;right:0;top:0;bottom:0;width:8px}
+.faces{display:flex;flex-wrap:wrap;gap:7px}
+.fc-b{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r);
+  padding:7px 11px;font-size:15px;line-height:1.2;color:var(--ink2);cursor:pointer}
+.fc-b:hover{border-color:var(--ink3)}
+.fc-b[aria-pressed="true"]{border-color:var(--acc);color:var(--ink)}
+.fc-b span{display:block;font-family:var(--sans);font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink3);margin-top:3px}

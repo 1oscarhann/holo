@@ -214,10 +214,39 @@ most, and an instrument draws its own line in its own colour and saves the
 semantic hues for the deltas. A falling line still goes red: that is the one
 state worth interrupting for.
 
-**One typeface, not three.** Archivo carries everything except numerals, which
-stay mono. Hierarchy comes from size and weight rather than from switching
-family. An earlier v0.17 pass used a display serif for headlines; it read as
-decoration rather than structure and was dropped.
+**One typeface, not three.** Hierarchy comes from size and weight rather than
+from switching family. An earlier v0.17 pass used a display serif for headlines;
+it read as decoration rather than structure and was dropped.
+
+**The figure face is no longer monospace.** Numerals were JetBrains Mono — a
+*coding* face, with terminal letter-spacing and slashed zeros, which made a
+portfolio total read like stdout rather than money. `--fig` now follows
+`--sans`, so the biggest number on the screen is set in whatever face you
+chose. Columns still line up because `body` already sets
+`font-feature-settings: "tnum"`; alignment never needed a monospace face, only
+tabular figures. Weights and tracking on the big figures were retuned at the
+same time — 500 and `-.02em` were tuned for a face with fixed advance widths.
+
+### Themes
+
+Palette and typeface are chosen by the person using the app, on the You tab.
+Nine palettes (including two light ones — every other card tracker is dark) and
+eight faces, each a complete token set so adding one is additive and cannot
+half-apply.
+
+`static/theme.js` is loaded **synchronously in `<head>`, before `app.css`**.
+That ordering is the whole feature: stamped after the stylesheet, every page
+load flashes the default theme first. `tests/test_theme.py` asserts it, along
+with the script carrying no `defer`/`async`.
+
+The choice lives in `localStorage`, not on the user row: it is a per-device
+display preference, it has to resolve before the first paint (a round trip
+cannot), and it needs no migration. It does not follow you to a second device —
+the right trade for a setting you change once. Every read is wrapped, because
+`localStorage` throws outright in some private modes.
+
+Only the selected font family is fetched; loading all eight would cost more
+than the feature is worth.
 
 The set completion grid also had a real bug: missing cards were dimmed to
 `brightness(.22)`, which is indistinguishable from black on a phone. They are
