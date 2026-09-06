@@ -202,3 +202,33 @@ What replaced it:
 The set completion grid also had a real bug: missing cards were dimmed to
 `brightness(.22)`, which is indistinguishable from black on a phone. They are
 now greyscale at `.62`, so the whole set reads as a checklist.
+
+### Portfolio tab
+
+The graph is the reason the tab exists, so it is now the main object on it. It
+used to be 150px tall and wedged between a scrolling card strip above it and
+its own range buttons below. Now:
+
+- The chart is 232px (280px from 560px up) and sits directly under the value.
+- Its range tabs are one segmented control, with Share moved out of that row so
+  the tabs read as a single thing rather than five loose buttons.
+- A reserved strip above the canvas — not an overlay, which would put text on
+  top of the line exactly where the line is interesting — shows what the
+  *selected* window moved by in pounds. The hero already carries the total and
+  its chips are fixed windows in percent, so this says something new. Drag
+  across the chart and it becomes that day's value and date.
+- `drawLine` gained an optional `padX` (default 0, so every other chart in the
+  app is untouched) to stop the end dot being clipped by the canvas edge, and
+  the portfolio chart now takes `--up`/`--down` from the palette instead of
+  `drawLine`'s pre-0.16 mint and salmon.
+
+Below the graph, above the numbers, the top five holdings are shown as art: the
+biggest one large, the other four beside it. The art keeps its true aspect and
+nothing is laid over it — the featured caption is pushed to the bottom of its
+column so it lines up with the captions next to it.
+
+That showcase replaced two sections that were rendering the *same five cards*
+twice: the old horizontal `.holdstrip` above the chart, and the "Biggest
+holdings" rows below it (`s.top` is already `hs[:5]`, so they were identical).
+`tests/test_portfolio_layout.py` asserts the order, since it is the kind of
+thing an unrelated edit shuffles by accident.

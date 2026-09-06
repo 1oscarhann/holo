@@ -44,7 +44,10 @@ function drawLine(canvas, points, opts = {}) {
   let lo = Math.min(...ys), hi = Math.max(...ys);
   if (hi === lo) { hi += 1; lo -= 1; }
   const padY = 10;
-  const X = i => (i / (points.length - 1)) * W;
+  // padX keeps the end dot from being clipped by the canvas edge. Off by
+  // default so the sparklines elsewhere are unchanged.
+  const padX = opts.padX || 0;
+  const X = i => padX + (i / (points.length - 1)) * (W - padX * 2);
   const Y = v => H - padY - ((v - lo) / (hi - lo)) * (H - padY * 2);
   const up = ys[ys.length - 1] >= ys[0];
   const col = opts.color || (up ? '#8fe3b8' : '#f2a08a');

@@ -42,28 +42,39 @@
     {{ chip('24h', s.chg1) }}{{ chip('7d', s.chg7) }}{{ chip('30d', s.chg30) }}
   </div>
 </section>
-{% if s.top %}
-<div class="holdstrip">
-  {% for c in s.top[:8] %}
-  <a href="/card/{{ c.hid }}">
-    <img {{ img_attrs(c) }} alt="{{ c.name }}">
-    <b>£{{ '{:,.0f}'.format(c.value) }}</b>
-    <span>{{ c.name }}</span>
-  </a>
-  {% endfor %}
-</div>
-{% endif %}
+<section class="graph">
+  <div class="chart">
+    <canvas id="c"></canvas>
+    <div class="chart-read" id="read"><b class="num"></b><i></i></div>
+    {% if s.series|length < 2 %}
+    <div class="empty">Your value history starts today. Come back tomorrow for the first line.</div>
+    {% endif %}
+  </div>
+  <div class="graph-foot">
+    <div class="ranges" id="ranges" role="tablist" aria-label="Chart range">
+      <button data-n="7" role="tab">7d</button><button data-n="30" role="tab" class="on" aria-selected="true">30d</button><button data-n="90" role="tab">90d</button><button data-n="0" role="tab">All</button>
+    </div>
+    <button id="share" class="sharebtn">Share</button>
+  </div>
+</section>
 
-<div class="chart">
-  <canvas id="c"></canvas>
-  {% if s.series|length < 2 %}
-  <div class="empty">Your value history starts today. Come back tomorrow for the first line.</div>
-  {% endif %}
-</div>
-<div class="ranges" id="ranges">
-  <button data-n="7">7d</button><button data-n="30" class="on">30d</button><button data-n="90">90d</button><button data-n="0">All</button>
-  <button id="share" style="margin-left:auto;color:var(--ink)">Share</button>
-</div>
+{% if s.top %}
+<section class="sec">
+  <h2>Top holdings <a href="/cards" class="seeall">All cards</a></h2>
+  <div class="topfive">
+    {% for c in s.top[:5] %}
+    <a class="tf" href="/card/{{ c.hid }}">
+      <img {{ img_attrs(c) }} alt="{{ c.name }}">
+      <b class="num">£{{ '{:,.2f}'.format(c.value) }}</b>
+      <span class="nm">{{ c.name }}</span>
+      <span class="mv {{ 'up' if c.chg7 and c.chg7 > 0 else ('down' if c.chg7 and c.chg7 < 0) }}">
+        {%- if c.chg7 is none %}—{% else %}{{ '+' if c.chg7 > 0 }}{{ '%.1f'|format(c.chg7) }}% 7d{% endif -%}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 
 {% if s.ath and s.series|length > 1 %}
 <section class="sec">
@@ -86,20 +97,6 @@
     </div>
   </div>
 </section>
-
-{% if s.top %}
-<section class="sec">
-  <h2>Biggest holdings <a href="/cards">All cards</a></h2>
-  {% for c in s.top %}
-  <a class="row" href="/card/{{ c.hid }}">
-    <img {{ img_attrs(c) }} alt="">
-    <div class="t"><div class="n">{{ c.name }}</div><div class="m">{{ c.set_name }} · {{ c.local_id }}{% if c.grade %} · {{ c.grade }}{% endif %}{% if c.qty > 1 %} · ×{{ c.qty }}{% endif %}</div></div>
-    <div class="r"><div class="p num">£{{ '{:,.2f}'.format(c.value) }}</div>
-      <div class="c num {{ 'up' if c.chg7 and c.chg7 > 0 else ('down' if c.chg7 and c.chg7 < 0) }}">{% if c.chg7 is none %}—{% else %}{{ '+' if c.chg7 > 0 }}{{ '%.1f'|format(c.chg7) }}% 7d{% endif %}</div></div>
-  </a>
-  {% endfor %}
-</section>
-{% endif %}
 
 {% if s.sets %}
 <section class="sec">
@@ -157,15 +154,95 @@
 <script>
 const series = {{ s.series|tojson }};
 const cv = document.getElementById('c');
+const read = document.getElementById('read');
+
+// drawLine's own defaults are the pre-0.16 mint/salmon. The chart is the main
+// object on this tab now, so it takes the palette's real up/down colours.
+const cssv = getComputedStyle(document.documentElement);
+const UP = cssv.getPropertyValue('--up').trim() || '#c8ff3d';
+const DOWN = cssv.getPropertyValue('--down').trim() || '#ff5d5d';
+
+const PADX = 5;                 // keeps the end dot off the canvas edge
+let cur = [], curCol = UP, curN = 30;
+
 function render(n){
-  const pts = (n ? series.slice(-n) : series).map(p => ({y: p.total}));
-  drawLine(cv, pts);
+  curN = n;
+  cur = n ? series.slice(-n) : series;
+  curCol = (cur.length > 1 && cur[cur.length - 1].total < cur[0].total) ? DOWN : UP;
+  drawLine(cv, cur.map(p => ({y: p.total})), {color: curCol, padX: PADX});
 }
+
+// same mapping drawLine uses, so the marker lands on the line
+function geom(){
+  const W = cv.clientWidth, H = cv.clientHeight, padY = 10;
+  const ys = cur.map(p => p.total);
+  let lo = Math.min(...ys), hi = Math.max(...ys);
+  if (hi === lo){ hi += 1; lo -= 1; }
+  return {W, H,
+    X: i => PADX + (i / (cur.length - 1)) * (W - PADX * 2),
+    Y: v => H - padY - ((v - lo) / (hi - lo)) * (H - padY * 2)};
+}
+
+const money = v => '£' + v.toLocaleString('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+function scrub(e){
+  if (cur.length < 2) return;
+  const r = cv.getBoundingClientRect();
+  const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
+  const i = Math.round(x / r.width * (cur.length - 1));
+  const p = cur[i];
+  if (!p) return;
+  render(curN);
+  const g = geom(), ctx = cv.getContext('2d'), px = g.X(i), py = g.Y(p.total);
+  ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, g.H);
+  ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2);
+  ctx.fillStyle = curCol; ctx.fill();
+  ctx.beginPath(); ctx.arc(px, py, 6.5, 0, Math.PI * 2);
+  ctx.strokeStyle = curCol + '55'; ctx.lineWidth = 2; ctx.stroke();
+
+  const bEl = read.querySelector('b');
+  bEl.textContent = money(p.total); bEl.className = 'num';
+  const iEl = read.querySelector('i');
+  iEl.className = '';
+  iEl.textContent = new Date(p.day).toLocaleDateString('en-GB',
+    {day: 'numeric', month: 'short', year: '2-digit'});
+  read.style.left = Math.max(0, Math.min(px - 40, r.width - 110)) + 'px';
+}
+
+// Idle state. The hero already carries the total in 46px type, so repeating it
+// here would be dead weight — this shows what the *selected window* moved by,
+// in pounds, which nothing else on the page says (the hero chips are fixed
+// windows, in percent).
+function headIdle(){
+  read.style.left = '0px';
+  const bEl = read.querySelector('b'), iEl = read.querySelector('i');
+  if (cur.length < 2){ bEl.textContent = '—'; iEl.className = ''; iEl.textContent = 'no history yet'; return; }
+  const a = cur[0].total, z = cur[cur.length - 1].total, abs = z - a;
+  const d = a ? abs / a * 100 : null;
+  const dir = abs > 0 ? 'up' : abs < 0 ? 'down' : '';
+  bEl.textContent = (abs > 0 ? '+' : abs < 0 ? '−' : '') + money(Math.abs(abs));
+  bEl.className = 'num ' + dir;
+  iEl.className = dir;
+  iEl.textContent = (d == null ? '—' : (d > 0 ? '+' : '') + d.toFixed(2) + '%')
+                  + ' · ' + (curN ? 'past ' + curN + ' days' : 'all time');
+}
+
+function unscrub(){ render(curN); headIdle(); }
+cv.addEventListener('pointermove', scrub);
+cv.addEventListener('pointerdown', scrub);
+cv.addEventListener('pointerleave', unscrub);
+cv.addEventListener('pointercancel', unscrub);
+
 document.querySelectorAll('#ranges button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('#ranges button').forEach(x => x.classList.remove('on'));
-  b.classList.add('on'); render(+b.dataset.n);
+  document.querySelectorAll('#ranges button').forEach(x => {
+    x.classList.remove('on'); x.removeAttribute('aria-selected');
+  });
+  b.classList.add('on'); b.setAttribute('aria-selected', 'true');
+  render(+b.dataset.n); headIdle();
 });
-render(30); addEventListener('resize', () => render(+document.querySelector('#ranges .on').dataset.n));
+render(30); headIdle();
+addEventListener('resize', () => { render(curN); headIdle(); });
 
 // ---- shareable card: drawn on-device, pushed to the native share sheet
 const share = document.getElementById('share');
