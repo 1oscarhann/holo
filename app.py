@@ -39,7 +39,7 @@ EUR_GBP = float(os.environ.get("EUR_GBP", "0.85"))
 USD_GBP = float(os.environ.get("USD_GBP", "0.78"))
 PRICE_TTL_HOURS = 20
 PTCGIO_IMG = "https://images.pokemontcg.io"
-VERSION = os.environ.get("APP_VERSION", "0.10.0-beta")
+VERSION = os.environ.get("APP_VERSION", "0.11.0-beta")
 
 # Cloudflare Web Analytics. Only needed for the manual setup (site not proxied,
 # e.g. hitting the onrender.com host directly). If the domain is orange-clouded,

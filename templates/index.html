@@ -31,8 +31,16 @@
 {% else %}
 
 <section class="hero">
+  {% if s.top %}
+  <div class="fan" aria-hidden="true">
+    <div class="fan-glow"></div>
+    {% for c in s.top[:5] %}
+    <img {{ img_attrs(c) }} alt="" style="--i:{{ loop.index0 }};--n:{{ s.top[:5]|length }}">
+    {% endfor %}
+  </div>
+  {% endif %}
   <div class="who">{{ session.username }}'s collection</div>
-  <div class="value num"><small>£</small>{{ '{:,.2f}'.format(s.total) }}</div>
+  <div class="value num"><small>£</small><span data-count>{{ '{:,.2f}'.format(s.total) }}</span></div>
   <div class="chips">
     {{ chip('24h', s.chg1) }}{{ chip('7d', s.chg7) }}{{ chip('30d', s.chg30) }}
   </div>
@@ -89,7 +97,10 @@
 <section class="sec">
   <h2>By set</h2>
   {% for e in s.sets[:6] %}
-  <a class="row" style="display:block" href="/set/{{ e.set_id }}">
+  <a class="row setrow" href="/set/{{ e.set_id }}">
+    <img class="setlogo" src="https://assets.tcgdex.net/en/{{ e.set_id.split('.')[0][:2] }}/{{ e.set_id }}/logo.webp"
+         alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+    <div class="sw">
     <div style="display:flex;justify-content:space-between;align-items:baseline">
       <div class="n" style="font-weight:600">{{ e.set }}</div>
       <div class="p num" style="font-weight:600">£{{ '{:,.2f}'.format(e.value) }}</div>

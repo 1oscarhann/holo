@@ -96,7 +96,8 @@
 
   /* --- run on load and after every client-side page swap ------------------- */
   function enhance() {
-    document.querySelectorAll('.hero .value').forEach(countUp);
+    // target the inner span, not the whole .value — the £ lives outside it
+    document.querySelectorAll('.hero .value [data-count]').forEach(countUp);
   }
   enhance();
   addEventListener('holo:navigated', enhance);

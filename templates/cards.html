@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="search"><input id="q" type="search" placeholder="Filter your cards" autocomplete="off"></div>
-<div class="list-actions"><button class="btn ghost" id="refresh">Refresh prices</button></div>
+<div class="list-actions">
+  <button class="btn ghost" id="refresh">Refresh prices</button>
+  <button class="viewtog" id="viewtog" aria-label="Switch view">
+    <svg viewBox="0 0 24 24" class="i-grid"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    <svg viewBox="0 0 24 24" class="i-list"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+</div>
 <section class="sec" id="list">
 {% for c in cards %}
 <a class="row" href="/card/{{ c.hid }}" data-k="{{ (c.name ~ ' ' ~ c.set_name ~ ' ' ~ c.local_id)|lower }}">
@@ -9,6 +15,7 @@
   <div class="t"><div class="n">{{ c.name }}</div><div class="m">{{ c.set_name }} · {{ c.local_id }}{% if c.rarity %} · {{ c.rarity }}{% endif %}{% if c.grade %} · {{ c.grade }}{% endif %}</div></div>
   <div class="r"><div class="p num">£{{ '{:,.2f}'.format(c.value) }}</div>
     <div class="c num {{ 'up' if c.chg7 and c.chg7 > 0 else ('down' if c.chg7 and c.chg7 < 0) }}">{% if c.qty > 1 %}×{{ c.qty }} · {% endif %}{% if c.chg7 is none %}—{% else %}{{ '+' if c.chg7 > 0 }}{{ '%.1f'|format(c.chg7) }}%{% endif %}</div></div>
+  <div class="gmeta"><b>£{{ '{:,.0f}'.format(c.value) }}</b>{% if c.qty > 1 %}<i>×{{ c.qty }}</i>{% endif %}</div>
 </a>
 {% else %}
 <div class="hint">No cards yet. Tap the + to add one.</div>
@@ -17,6 +24,14 @@
 {% endblock %}
 {% block script %}
 <script>
+const tog = document.getElementById('viewtog'), list = document.getElementById('list');
+const setView = v => { list.classList.toggle('grid-v', v === 'grid');
+  tog.classList.toggle('is-grid', v === 'grid');
+  try { localStorage.setItem('cards-view', v); } catch {} };
+setView(localStorage.getItem('cards-view') || 'list');
+tog.onclick = () => { const v = list.classList.contains('grid-v') ? 'list' : 'grid';
+  setView(v); window.buzz?.(8); };
+
 q.oninput = () => { const v = q.value.toLowerCase(); document.querySelectorAll('#list .row').forEach(r => r.style.display = r.dataset.k.includes(v) ? '' : 'none'); };
 refresh.onclick = async () => { refresh.disabled = true; refresh.textContent = 'Refreshing…';
   try { const r = await api('/api/refresh','POST'); toast(`Refreshed ${r.refreshed} of ${r.of}`); location.reload(); }

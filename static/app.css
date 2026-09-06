@@ -394,3 +394,64 @@ nav.tabs a.plus{display:none}
 .jump a::after{content:'';position:absolute;right:6px;top:50%;width:7px;height:7px;
   border-right:1.8px solid var(--ink3);border-top:1.8px solid var(--ink3);
   transform:translateY(-50%) rotate(45deg)}
+
+/* ---- hero: fanned card art --------------------------------------------- */
+.hero{position:relative;padding-top:14px}
+.fan{position:relative;height:138px;margin:0 auto 18px;width:100%;
+  display:flex;align-items:center;justify-content:center}
+.fan-glow{position:absolute;inset:-30% -10%;pointer-events:none;
+  background:radial-gradient(60% 70% at 50% 45%,rgba(122,226,255,.16),transparent 70%),
+             radial-gradient(50% 60% at 30% 60%,rgba(201,166,255,.14),transparent 70%),
+             radial-gradient(50% 60% at 72% 55%,rgba(255,206,120,.12),transparent 70%);
+  filter:blur(14px)}
+.fan img{position:absolute;width:88px;border-radius:6px;display:block;
+  box-shadow:0 10px 26px rgba(0,0,0,.55);
+  --mid:calc((var(--n) - 1) / 2);
+  --off:calc(var(--i) - var(--mid));
+  transform:translateX(calc(var(--off) * 46px))
+            rotate(calc(var(--off) * 7deg))
+            translateY(calc(var(--off) * var(--off) * 5px));
+  z-index:calc(10 - (var(--off) * var(--off)));
+  opacity:calc(1 - (var(--off) * var(--off)) * .12)}
+@media (prefers-reduced-motion:no-preference){
+  .fan img{transition:transform .3s cubic-bezier(.2,.8,.3,1)}
+  .hero:active .fan img{transform:translateX(calc(var(--off) * 54px))
+            rotate(calc(var(--off) * 9deg))
+            translateY(calc(var(--off) * var(--off) * 4px))}
+}
+
+/* ---- cards: art grid view ---------------------------------------------- */
+.list-actions{display:flex;gap:8px;align-items:center}
+.list-actions .btn{flex:1}
+.viewtog{flex:none;width:44px;height:44px;border-radius:11px;border:1px solid var(--line);
+  background:var(--bg2);color:var(--ink2);display:flex;align-items:center;justify-content:center}
+.viewtog svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;
+  stroke-linecap:round}
+.viewtog .i-list{display:none}
+.viewtog.is-grid .i-grid{display:none}
+.viewtog.is-grid .i-list{display:block}
+
+.gmeta{display:none}
+#list.grid-v{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;padding-top:6px}
+#list.grid-v .row{display:block;padding:0;border:0;position:relative;border-radius:7px;
+  overflow:hidden;background:var(--bg2);aspect-ratio:245/342}
+#list.grid-v .row img{width:100%;height:100%;object-fit:cover;border-radius:0;flex:none}
+#list.grid-v .row .t,#list.grid-v .row .r{display:none}
+#list.grid-v .gmeta{display:flex;align-items:baseline;gap:4px;position:absolute;
+  left:0;right:0;bottom:0;padding:14px 6px 5px;
+  background:linear-gradient(transparent,rgba(0,0,0,.88))}
+#list.grid-v .gmeta b{font-size:12.5px;font-weight:700}
+#list.grid-v .gmeta i{font-style:normal;font-size:10.5px;color:var(--ink2)}
+
+/* ---- set rows with logos ----------------------------------------------- */
+.setrow{display:flex;gap:12px;align-items:center}
+.setrow .sw{flex:1;min-width:0}
+.setlogo{width:56px;height:34px;object-fit:contain;flex:none;border-radius:0}
+
+/* ---- rarity donut ------------------------------------------------------ */
+.donutwrap{position:relative;width:150px;margin:6px auto 20px}
+.donut{width:150px;height:150px;transform:rotate(-90deg)}
+.donutmid{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;pointer-events:none}
+.donutmid b{font-size:26px;font-weight:600;line-height:1}
+.donutmid span{font-size:11px;color:var(--ink2);margin-top:2px}

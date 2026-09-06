@@ -4,7 +4,19 @@
 
 {% if rarities %}
 <section class="sec"><h2>Value by rarity</h2>
-  <div class="rbar">{% for r in rarities %}<i style="width:{{ r.share }}%;--i:{{ loop.index0 }}" title="{{ r.rarity }}"></i>{% endfor %}</div>
+  <div class="donutwrap">
+    <svg class="donut" viewBox="0 0 42 42">
+      {% set ns = namespace(off=25) %}
+      {% for r in rarities %}
+      <circle r="15.9155" cx="21" cy="21" fill="none" stroke-width="6"
+              stroke="hsl(calc(200 + {{ loop.index0 }} * 38) 55% 62%)"
+              stroke-dasharray="{{ r.share }} {{ 100 - r.share }}"
+              stroke-dashoffset="{{ ns.off }}"></circle>
+      {% set ns.off = ns.off - r.share %}
+      {% endfor %}
+    </svg>
+    <div class="donutmid"><b class="num">{{ rarities|length }}</b><span>rarities</span></div>
+  </div>
   {% for r in rarities[:6] %}
   <div class="row slim"><span class="dot" style="--i:{{ loop.index0 }}"></span>
     <div class="t"><div class="n">{{ r.rarity }}</div><div class="m">{{ r.n }} card{{ '' if r.n == 1 else 's' }}</div></div>
