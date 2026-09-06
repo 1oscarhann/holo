@@ -21,6 +21,42 @@ Multi-user Pokémon card portfolio. Flask, Neon (Postgres), Render, Cloudflare. 
     pip install -r requirements.txt
     DATABASE_URL=postgresql://... SECRET_KEY=dev ENABLE_SCHEDULER=0 python3 app.py
 
+## Tests
+
+    pip install -r requirements-dev.txt
+    eval "$(scripts/pgtest.sh start)"     # throwaway Postgres, prints TEST_DATABASE_URL
+    pytest
+    scripts/pgtest.sh stop                # deletes the cluster
+
+The suite runs against a real Postgres rather than a stub, because most of what
+is worth testing here is a `WHERE user_id = %s` that either scopes a query or
+doesn't. `conftest.py` truncates every table between tests, so point
+`TEST_DATABASE_URL` at a throwaway database and never at anything real. It
+defaults to `postgresql://postgres@127.0.0.1:5433/holotest`, which is what
+`scripts/pgtest.sh` sets up.
+
+No test is allowed to reach the network. `conftest.py` replaces every
+`requests` verb with a function that raises, so a test that would have hit
+TCGdex, pokemontcg.io, ntfy or a Discord webhook fails loudly instead of
+passing slowly. Tests that need an API response monkeypatch `app.tcgdex`.
+
+`app.py` reads its configuration into module-level constants at import time, so
+`conftest.py` sets the environment before importing it. A test that needs a
+different `ADMIN_USER` or `PREMIUM_CODE` monkeypatches the attribute on the
+module — that is the value the request handlers actually read.
+
+What's covered, roughly in order of how much damage the bug would do:
+
+| File | What it pins down |
+| --- | --- |
+| `test_isolation.py` | Every per-user surface probed from a second account: holdings, alerts, watchlist, sales, custom items, exports, snapshots, totals. Plus the reverse — cards and prices are asserted to stay *shared*, because that is the cost model. |
+| `test_gates.py` | Logged-out redirects, 401 JSON on `/api/*`, the admin gate failing closed when `ADMIN_USER` is unset, premium read from the database rather than the session, code redemption, signup validation, and the `?next=` open redirect. |
+| `test_scan.py` | OCR matching: name cleaning, `l`/`I`→`1` and `O`→`0`, the short-token rule, prefix shortening, the request cap, and that a scan never adds a card by itself. |
+| `test_ranking.py` | `rank_key` — exact and prefix sharing a tier, novelty series demoted below every normal tier, newest set first, unknown sets not crashing. |
+| `test_images.py` | The `TCGdex → pokemontcg.io → placeholder` chain, `setmap.json` translation, and that an *unverified* pokemontcg.io URL never enters the chain. |
+| `test_pricing.py` | `price_from`'s contract — the seam a licensed provider gets swapped in at — plus one price row per card per day and carrying the last price forward when a fetch fails. |
+| `test_import.py` | Bulk import: quantity/price parsing, quoted commas, the 300-row cap, and re-importing a card you already own topping up the pile instead of hitting the unique constraint. |
+
 ## What's in it
 
 - Accounts (hashed passwords). Every user only sees their own collection.
@@ -112,6 +148,13 @@ takeover waiting to happen. All of it was removed.
 nobody is an admin. Granting premium by hand is a SQL statement:
 
     UPDATE users SET premium = true, premium_since = now() WHERE username = 'x';
+
+One more that the tests caught: `?next=` on the login form was passed straight
+to `redirect()`, so `/login?next=https://evil.example` logged you in on the real
+site and then bounced you off it — a complete phishing hop wearing the real
+domain and a real login. `safe_next()` now accepts only a single-slash relative
+path, rejecting protocol-relative `//host`, absolute URLs, and backslashes
+(browsers normalise `\` to `/`).
 
 ## Landing page
 

@@ -312,6 +312,21 @@ def uid():
     return session["uid"]
 
 
+def safe_next(target):
+    """Return ?next= only if it is a path on this site, else None.
+
+    Unvalidated, this hands anyone a redirect off the domain that runs after a
+    real login on the real login form — which is the whole of a phishing hop.
+    Only a single-slash relative path is allowed: "//evil" is protocol-relative
+    and browsers normalise a backslash to a slash, so both are rejected too.
+    """
+    if not target or not target.startswith("/") or target.startswith("//"):
+        return None
+    if "\\" in target or any(ch in target for ch in "\r\n\t") or "\0" in target:
+        return None
+    return target
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     err = None
@@ -323,7 +338,7 @@ def login():
             session["uid"] = row["id"]
             session["username"] = u
             ensure_snapshot(row["id"])
-            return redirect(request.args.get("next") or url_for("home"))
+            return redirect(safe_next(request.args.get("next")) or url_for("home"))
         err = "Wrong username or password."
     return render_template("auth.html", mode="login", err=err)
 
