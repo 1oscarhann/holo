@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block body %}
+
+<div class="scanwrap">
+  <div class="viewport" id="vp">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="frame" hidden></canvas>
+    <div class="guide">
+      <span class="gz name">name</span>
+      <span class="gz num">number</span>
+    </div>
+    <div class="scanmsg" id="msg">Line the card up inside the frame</div>
+  </div>
+
+  <div class="scanbar">
+    <label class="pickfile" title="Use a photo">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-5 4 4 3-2 4 4"/></svg>
+      <input type="file" id="file" accept="image/*" capture="environment" hidden>
+    </label>
+    <button class="shutter" id="shot" aria-label="Scan card"></button>
+    <a class="typeit" href="/add">Type<br>instead</a>
+  </div>
+</div>
+
+<section class="sec" id="results" hidden>
+  <h2>Is it one of these? <span class="tiny muted" id="readout"></span></h2>
+  <div id="cands"></div>
+  <button class="btn ghost" id="again">Scan another</button>
+</section>
+
+{% endblock %}
+
+{% block script %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/7.0.0/tesseract.min.js"></script>
+<script>
+const vp = document.getElementById('vp'), cam = document.getElementById('cam');
+const frame = document.getElementById('frame'), msg = document.getElementById('msg');
+const results = document.getElementById('results'), cands = document.getElementById('cands');
+let stream = null, busy = false;
+
+async function startCam() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal: 'environment'}, width: {ideal: 1920}}});
+    cam.srcObject = stream;
+  } catch (e) {
+    // No camera, or permission denied (common on desktop and in-app browsers).
+    // The file input still works and opens the camera on phones.
+    vp.classList.add('nocam');
+    msg.textContent = 'Tap the photo icon to pick or take a picture';
+  }
+}
+startCam();
+
+/* Crop the two regions that actually matter. OCR on a whole card picks up
+   attack text and flavour text and gets slower and worse for it. */
+function crop(src, x, y, w, h, scale) {
+  const c = document.createElement('canvas');
+  c.width = w * scale; c.height = h * scale;
+  const g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(src, x, y, w, h, 0, 0, c.width, c.height);
+  // greyscale + hard contrast: Tesseract does much better on flat black-on-white
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const v = p[i] * 0.299 + p[i+1] * 0.587 + p[i+2] * 0.114;
+    const t = v > 145 ? 255 : 0;
+    p[i] = p[i+1] = p[i+2] = t;
+  }
+  g.putImageData(d, 0, 0);
+  return c;
+}
+
+async function readCard(source, w, h) {
+  busy = true;
+  msg.textContent = 'Reading…';
+  const nameC = crop(source, w * 0.02, h * 0.025, w * 0.82, h * 0.115, 2.4);
+  const numC  = crop(source, w * 0.03, h * 0.885, w * 0.46, h * 0.09, 3.2);
+  try {
+    const [n1, n2] = await Promise.all([
+      Tesseract.recognize(nameC, 'eng'),
+      Tesseract.recognize(numC, 'eng'),
+    ]);
+    const name = (n1.data.text || '').trim().split('\n')[0];
+    const number = (n2.data.text || '').trim().replace(/\s+/g, '');
+    await lookup(name, number);
+  } catch (e) {
+    msg.textContent = 'Could not read that. Try again in better light.';
+  }
+  busy = false;
+}
+
+async function lookup(name, number) {
+  msg.textContent = 'Looking it up…';
+  const r = await api('/api/scan', 'POST', {name, number});
+  document.getElementById('readout').textContent =
+    [r.name, r.number].filter(Boolean).join(' · ') || 'nothing readable';
+  if (!r.candidates.length) {
+    msg.textContent = r.error || 'No match. Try again, or type the name.';
+    return;
+  }
+  window.buzz?.(16);
+  cands.innerHTML = r.candidates.map(c => `
+    <div class="row" data-id="${c.id}">
+      <img src="${c.img}" data-alts='${JSON.stringify(c.img_alts || [])}'
+           onerror="holoImg(this)" alt="">
+      <div class="t"><div class="n">${c.name}</div>
+        <div class="m">${c.set_name} · ${c.local_id}${c.set_total ? '/' + c.set_total : ''}</div></div>
+      <button class="btn ghost pick" data-id="${c.id}">Add</button>
+    </div>`).join('');
+  results.hidden = false;
+  msg.textContent = 'Pick the right one below';
+  results.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+document.getElementById('shot').onclick = () => {
+  if (busy || !stream) return toast('Camera not running — use the photo icon');
+  const w = cam.videoWidth, h = cam.videoHeight;
+  frame.width = w; frame.height = h;
+  frame.getContext('2d').drawImage(cam, 0, 0);
+  window.buzz?.(12);
+  readCard(frame, w, h);
+};
+
+document.getElementById('file').onchange = e => {
+  const f = e.target.files[0];
+  if (!f || busy) return;
+  const img = new Image();
+  img.onload = () => readCard(img, img.width, img.height);
+  img.src = URL.createObjectURL(f);
+};
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('.pick');
+  if (!b) return;
+  b.disabled = true;
+  try {
+    await api('/api/holdings', 'POST', {card_id: b.dataset.id, qty: 1});
+    toast('Added'); window.buzz?.(20);
+    setTimeout(() => location.href = '/cards', 700);
+  } catch (err) { toast(err.message || 'Could not add'); b.disabled = false; }
+});
+
+document.getElementById('again').onclick = () => {
+  results.hidden = true; cands.innerHTML = '';
+  msg.textContent = 'Line the card up inside the frame';
+  vp.scrollIntoView({behavior: 'smooth'});
+};
+
+addEventListener('pagehide', () => stream?.getTracks().forEach(t => t.stop()));
+</script>
+{% endblock %}

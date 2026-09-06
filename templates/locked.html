@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="locked">
+  <div class="lk-badge">Premium</div>
+  <h1>{{ feature }}</h1>
+  <p>{{ blurb }}</p>
+  <a class="btn" href="/profile#premium">Enter your code</a>
+  <div class="lk-note">Premium isn't for sale yet. During the beta it's unlocked
+    with a code — ask for one.</div>
+</section>
+{% endblock %}
