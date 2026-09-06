@@ -32,6 +32,24 @@
 </section>
 <a class="btn ghost" href="/logout">Log out</a>
 
+<section class="sec" id="premium">
+  <h2>Premium</h2>
+  {% if is_premium() %}
+  <div class="prem on"><b>Premium unlocked</b>
+    <span>Multiple portfolios, price targets, camera scan and Japanese cards
+          as they land.</span></div>
+  {% else %}
+  <div class="prem">
+    <b>Have a code?</b>
+    <span>Premium isn't for sale yet. During the beta it's unlocked with a code.</span>
+    <div class="prow">
+      <input id="pcode" placeholder="Enter code" autocapitalize="none" autocomplete="off">
+      <button class="btn ghost" id="predeem">Unlock</button>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
 <nav class="jump">
   <a href="/sold"><b>Sold log</b><span>What you sold and what you made</span></a>
   <a href="/import"><b>Import cards</b><span>Paste a CSV or a list</span></a>
@@ -50,6 +68,16 @@
 {% endblock %}
 {% block script %}
 <script>
+const pr = document.getElementById('predeem');
+if (pr) pr.onclick = async () => {
+  const c = document.getElementById('pcode').value.trim();
+  if (!c) return toast('Enter your code');
+  pr.disabled = true;
+  try { await api('/api/premium/redeem','POST',{code:c});
+        toast('Premium unlocked'); window.buzz?.(20); setTimeout(()=>location.reload(),700); }
+  catch (e) { toast(e.message || "That code isn't right"); pr.disabled = false; }
+};
+
 document.getElementById('fb-send').onclick = async e => {
   const t = document.getElementById('fb').value.trim();
   if (!t) return toast('Type something first');

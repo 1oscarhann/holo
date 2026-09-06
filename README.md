@@ -92,3 +92,22 @@ present.
 
 Client-side navigation is handled automatically: the beacon patches the History
 API, so tab switches register as separate page views rather than one long visit.
+
+## Premium (beta)
+
+There is no checkout yet. Premium is unlocked with a code:
+
+    PREMIUM_CODE=whatever-you-like
+
+Share it with whoever should have premium; change it to revoke. Users redeem it
+on the You tab. As admin you can also grant or revoke per person from `/stats`
+by tapping the star next to their name.
+
+`ADMIN_USER` gates `/stats` and the admin actions. If it is unset, any logged-in
+user is treated as admin — set it before sharing the app.
+
+## Landing page
+
+`/` serves a public landing page when logged out and the portfolio when logged
+in, so a shared link no longer drops strangers straight into a signup form.
+Screenshots live in `static/img/` and are regenerated from real screens.

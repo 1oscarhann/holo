@@ -39,12 +39,18 @@ EUR_GBP = float(os.environ.get("EUR_GBP", "0.85"))
 USD_GBP = float(os.environ.get("USD_GBP", "0.78"))
 PRICE_TTL_HOURS = 20
 PTCGIO_IMG = "https://images.pokemontcg.io"
-VERSION = os.environ.get("APP_VERSION", "0.11.0-beta")
+VERSION = os.environ.get("APP_VERSION", "0.13.0-beta")
 
 # Cloudflare Web Analytics. Only needed for the manual setup (site not proxied,
 # e.g. hitting the onrender.com host directly). If the domain is orange-clouded,
 # Cloudflare injects the beacon itself and this can stay unset.
 CF_ANALYTICS_TOKEN = os.environ.get("CF_ANALYTICS_TOKEN", "")
+
+# No payments yet. Premium is unlocked with a code you hand out — set PREMIUM_CODE
+# in the environment, share it, revoke it by changing it. Swap this for a real
+# checkout later; nothing else needs to change.
+PREMIUM_CODE = os.environ.get("PREMIUM_CODE", "")
+ADMIN_USER = os.environ.get("ADMIN_USER", "")
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)  # Render + Cloudflare in front
@@ -195,7 +201,8 @@ def placeholder(set_id, local_id):
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL,
-  pw TEXT NOT NULL, created TIMESTAMPTZ NOT NULL DEFAULT now());
+  pw TEXT NOT NULL, created TIMESTAMPTZ NOT NULL DEFAULT now(),
+  premium BOOLEAN NOT NULL DEFAULT false, premium_since TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS cards (
   id TEXT PRIMARY KEY, name TEXT, set_id TEXT, set_name TEXT, local_id TEXT,
   rarity TEXT, image TEXT, set_total INTEGER,
@@ -284,6 +291,8 @@ with raw_db() as c:
     c.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS alt_image TEXT")
     c.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS alt_checked TIMESTAMPTZ")
     c.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS data JSONB")
+    c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium BOOLEAN NOT NULL DEFAULT false")
+    c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_since TIMESTAMPTZ")
 
 # ------------------------------------------------------------------------- auth
 
@@ -314,7 +323,7 @@ def login():
             session["uid"] = row["id"]
             session["username"] = u
             ensure_snapshot(row["id"])
-            return redirect(request.args.get("next") or url_for("index"))
+            return redirect(request.args.get("next") or url_for("home"))
         err = "Wrong username or password."
     return render_template("auth.html", mode="login", err=err)
 
@@ -338,7 +347,7 @@ def signup():
             session["uid"] = new_id
             session["username"] = u
             log_event("signup", username=u)
-            return redirect(url_for("index"))
+            return redirect(url_for("home"))
     return render_template("auth.html", mode="signup", err=err)
 
 
@@ -552,7 +561,13 @@ def stats(user_id):
 
 
 @app.route("/")
-@login_required
+def home():
+    """Logged out: a landing page. Logged in: the portfolio."""
+    if not session.get("uid"):
+        return render_template("landing.html")
+    return index()
+
+
 def index():
     return render_template("index.html", s=stats(uid()),
                            activity=recent_activity(uid(), 8), page="portfolio")
@@ -1599,13 +1614,57 @@ def log_pageview(resp):
     return resp
 
 
+def is_admin():
+    if not session.get("uid"):
+        return False
+    if not ADMIN_USER:
+        return True          # unset: single-user setup, don't lock yourself out
+    return session.get("username") == ADMIN_USER
+
+
+@app.template_global()
+def is_premium():
+    if not session.get("uid"):
+        return False
+    r = db().execute("SELECT premium FROM users WHERE id=%s", (uid(),)).fetchone()
+    return bool(r and r["premium"])
+
+
+@app.route("/api/premium/redeem", methods=["POST"])
+@login_required
+def redeem_premium():
+    code = ((request.get_json(force=True) or {}).get("code") or "").strip()
+    if not PREMIUM_CODE:
+        return jsonify(error="No code is active right now."), 400
+    if code.lower() != PREMIUM_CODE.lower():
+        log_event("premium_code_failed")
+        return jsonify(error="That code isn't right."), 400
+    db().execute("UPDATE users SET premium=true, premium_since=now() WHERE id=%s", (uid(),))
+    db().commit()
+    log_event("premium_unlocked", via="code")
+    return jsonify(ok=True)
+
+
+@app.route("/api/admin/premium", methods=["POST"])
+@login_required
+def admin_set_premium():
+    if not is_admin():
+        abort(403)
+    d = request.get_json(force=True) or {}
+    db().execute("""UPDATE users SET premium=%s,
+                    premium_since=CASE WHEN %s THEN now() ELSE NULL END
+                    WHERE username=%s""",
+                 (bool(d.get("on")), bool(d.get("on")), d.get("username")))
+    db().commit()
+    log_event("admin_premium", target=d.get("username"), on=bool(d.get("on")))
+    return jsonify(ok=True)
+
+
 @app.route("/stats")
 @login_required
 def stats_page():
     """Beta dashboard. Only the account named in ADMIN_USER can see it."""
-    me = db().execute("SELECT username FROM users WHERE id=%s", (uid(),)).fetchone()
-    admin = os.environ.get("ADMIN_USER")
-    if admin and me["username"] != admin:
+    if not is_admin():
         abort(403)
 
     q = lambda sql, *a: db().execute(sql, a).fetchall()
@@ -1622,7 +1681,7 @@ def stats_page():
         "stats.html",
         t=totals,
         people=q("""
-            SELECT u.username, u.created,
+            SELECT u.username, u.created, u.premium,
                    (SELECT COUNT(*) FROM holdings h WHERE h.user_id=u.id) AS cards,
                    (SELECT COUNT(*) FROM events e WHERE e.user_id=u.id) AS events,
                    (SELECT MAX(at) FROM events e WHERE e.user_id=u.id) AS last_seen

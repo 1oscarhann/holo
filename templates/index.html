@@ -30,6 +30,11 @@
 </section>
 {% else %}
 
+<a class="gsearch" href="/add">
+  <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+  <span>Search any Pokémon card</span>
+</a>
+
 <section class="hero">
   {% if s.top %}
   <div class="fan" aria-hidden="true">
@@ -95,21 +100,22 @@
 
 {% if s.sets %}
 <section class="sec">
-  <h2>By set</h2>
+  <h2>By set <a href="/sets" class="seeall">All sets</a></h2>
   {% for e in s.sets[:6] %}
-  <a class="row setrow" href="/set/{{ e.set_id }}">
-    <img class="setlogo" src="https://assets.tcgdex.net/en/{{ e.set_id.split('.')[0][:2] }}/{{ e.set_id }}/logo.webp"
-         alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-    <div class="sw">
-    <div style="display:flex;justify-content:space-between;align-items:baseline">
-      <div class="n" style="font-weight:600">{{ e.set }}</div>
-      <div class="p num" style="font-weight:600">£{{ '{:,.2f}'.format(e.value) }}</div>
-    </div>
-    <div style="display:flex;justify-content:space-between" class="tiny muted">
-      <span>{{ e.owned }}{% if e.total %} of {{ e.total }} · {{ e.completion }}% complete{% else %} cards{% endif %}</span>
-      <span class="num">{{ e.share }}% of value</span>
-    </div>
-    <div class="bar"><i style="width:{{ e.share }}%"></i></div>
+  <a class="setline" href="/set/{{ e.set_id }}">
+    <span class="logo">
+      <img src="https://assets.tcgdex.net/en/{{ e.set_id.split('.')[0][:2] }}/{{ e.set_id }}/logo.webp"
+           alt="" loading="lazy" onerror="this.closest('.logo').classList.add('nologo')">
+    </span>
+    <span class="txt">
+      <span class="nm">{{ e.set }}</span>
+      <span class="sub">{{ e.owned }}{% if e.total %} of {{ e.total }}{% else %} cards{% endif %}</span>
+      {% if e.total %}<span class="pbar"><i style="width:{{ e.completion }}%"></i></span>{% endif %}
+    </span>
+    <span class="amt">
+      <b class="num">£{{ '{:,.0f}'.format(e.value) }}</b>
+      <i class="num">{{ e.share }}%</i>
+    </span>
   </a>
   {% endfor %}
 </section>

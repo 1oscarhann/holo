@@ -33,6 +33,9 @@
       <div class="m">{{ p.cards }} card{{ '' if p.cards == 1 else 's' }} · {{ p.events }} events</div></div>
     <div class="r"><div class="p tiny muted">
       {% if p.last_seen %}{{ p.last_seen.strftime('%d %b %H:%M') }}{% else %}never opened{% endif %}</div></div>
+    <button class="pmtog {{ 'on' if p.premium }}" data-user="{{ p.username }}"
+            data-on="{{ '1' if p.premium else '0' }}"
+            title="{{ 'Premium — tap to revoke' if p.premium else 'Free — tap to grant premium' }}">★</button>
   </div>
   {% endfor %}
 </section>
@@ -62,4 +65,18 @@
       {{ r.at.strftime('%d %b %H:%M') }}</div></div></div>
   {% else %}<div class="hint">No actions logged yet.</div>{% endfor %}
 </section>
+{% endblock %}
+
+{% block script %}
+<script>
+document.querySelectorAll('.pmtog').forEach(b => b.onclick = async () => {
+  const on = b.dataset.on !== '1';
+  b.disabled = true;
+  try { await api('/api/admin/premium','POST',{username:b.dataset.user, on});
+        b.dataset.on = on ? '1' : '0'; b.classList.toggle('on', on);
+        toast(`${b.dataset.user} ${on ? 'is now premium' : 'back to free'}`); }
+  catch { toast('Could not change that'); }
+  b.disabled = false;
+});
+</script>
 {% endblock %}

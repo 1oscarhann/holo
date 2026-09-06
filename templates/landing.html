@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Holo — know what your Pokémon cards are worth</title>
+<meta name="description" content="Track your Pokémon card collection's value, daily. Set completion, price alerts, market movers.">
+<meta name="theme-color" content="#0b0d12">
+<link rel="stylesheet" href="{{ sv('app.css') }}">
+<link rel="manifest" href="/manifest.json">
+</head>
+<body class="landing">
+
+<header class="lnav">
+  <span class="brand">Holo</span>
+  <span class="tag">beta</span>
+  <a class="lin" href="/login">Log in</a>
+</header>
+
+<section class="lhero">
+  <h1>Know what your<br>collection is worth.</h1>
+  <p>Holo tracks the value of every Pokémon card you own, refreshed every
+     morning. See what moved, what you're missing, and what it's all worth.</p>
+  <a class="lcta" href="/signup">Create a free account</a>
+  <span class="lnote">Free · no card needed · takes a minute</span>
+
+  <div class="lshots">
+    <img src="{{ sv('img/cards.png') }}" alt="Your collection as a grid of card art" loading="lazy">
+    <img src="{{ sv('img/home.png') }}" alt="Portfolio value and 30-day chart" class="mid">
+    <img src="{{ sv('img/set.png') }}" alt="Set completion grid" loading="lazy">
+  </div>
+</section>
+
+<section class="lfeat">
+  <div>
+    <b>Daily valuations</b>
+    <span>Every card you own, priced each morning. 24-hour, 7-day and 30-day
+          movement on your whole portfolio.</span>
+  </div>
+  <div>
+    <b>Set completion</b>
+    <span>Every card in a set laid out. The ones you own in full colour, the
+          ones you're missing dimmed. You'll see the gaps immediately.</span>
+  </div>
+  <div>
+    <b>Price alerts</b>
+    <span>Tell Holo a number. It messages you when a card crosses it, so you
+          know when to sell without watching charts.</span>
+  </div>
+  <div>
+    <b>Market movers</b>
+    <span>The chase cards from recent sets, tracked daily — so you can see
+          what's climbing before you buy.</span>
+  </div>
+  <div>
+    <b>Sold log</b>
+    <span>Record what you actually sold and for how much. Paper value is one
+          thing; realised profit is another.</span>
+  </div>
+  <div>
+    <b>Works like an app</b>
+    <span>Add it to your home screen and it runs full screen, no address bar.
+          Nothing to install from a store.</span>
+  </div>
+</section>
+
+<section class="lmarket">
+  <img src="{{ sv('img/market.png') }}" alt="Market movers screen" loading="lazy">
+  <div>
+    <h2>See the market, not just your binder.</h2>
+    <p>Holo tracks 150 chase cards from the most recent sets whether you own
+       them or not — so the market page works on day one, and the moment you
+       add one of them your price history is already there.</p>
+  </div>
+</section>
+
+<section class="lend">
+  <h2>Start with one card.</h2>
+  <p>Add something from your latest pack and Holo takes it from there.</p>
+  <a class="lcta" href="/signup">Create a free account</a>
+  <span class="lnote">Already have one? <a href="/login">Log in</a></span>
+</section>
+
+<footer class="lfoot">
+  <span>Holo {{ VERSION }} — early access beta. Things will break.</span>
+  <span>Not affiliated with The Pokémon Company, Creatures, Game Freak or Nintendo.
+        Card images and names are the property of their respective owners.</span>
+</footer>
+
+{% if CF_TOKEN %}
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "{{ CF_TOKEN }}"}'></script>
+{% endif %}
+</body>
+</html>
