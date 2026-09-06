@@ -71,7 +71,15 @@ Existing databases migrate automatically on boot (`ADD COLUMN IF NOT EXISTS`).
 
 ## Analytics
 
-Cloudflare Web Analytics — free, cookieless, no consent banner needed.
+Usage is logged server-side into the `events` table and shown at `/stats`.
+Set `ADMIN_USER` to your username or anyone logged in can read it.
+
+Because it runs on the server there is no third-party script, nothing for an ad
+blocker to block, no cookie banner, and no data leaving your own database.
+Tracked: pageviews, signups, cards added, cards sold, watchlist adds, imports
+and feedback.
+
+### Optional: Cloudflare Web Analytics — free, cookieless, no consent banner needed.
 
 **If the domain is proxied through Cloudflare (orange cloud):** turn Web Analytics
 on in the dashboard and it injects the beacon itself. Leave `CF_ANALYTICS_TOKEN`

@@ -39,7 +39,7 @@ EUR_GBP = float(os.environ.get("EUR_GBP", "0.85"))
 USD_GBP = float(os.environ.get("USD_GBP", "0.78"))
 PRICE_TTL_HOURS = 20
 PTCGIO_IMG = "https://images.pokemontcg.io"
-VERSION = os.environ.get("APP_VERSION", "0.8.0-beta")
+VERSION = os.environ.get("APP_VERSION", "0.10.0-beta")
 
 # Cloudflare Web Analytics. Only needed for the manual setup (site not proxied,
 # e.g. hitting the onrender.com host directly). If the domain is orange-clouded,
@@ -201,6 +201,17 @@ CREATE TABLE IF NOT EXISTS cards (
   rarity TEXT, image TEXT, set_total INTEGER,
   alt_image TEXT, alt_checked TIMESTAMPTZ, data JSONB);
 
+-- beta usage log. Server-side, so ad blockers can't touch it and there's no
+-- third-party script, no consent banner, and no data leaving your database.
+CREATE TABLE IF NOT EXISTS events (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, path TEXT, meta JSONB,
+  at TIMESTAMPTZ DEFAULT now());
+CREATE INDEX IF NOT EXISTS events_at ON events (at DESC);
+CREATE INDEX IF NOT EXISTS events_user ON events (user_id, at DESC);
+CREATE INDEX IF NOT EXISTS events_kind ON events (kind, at DESC);
+
 -- sealed product and anything else without a TCGdex entry
 CREATE TABLE IF NOT EXISTS custom_items (
   id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -326,6 +337,7 @@ def signup():
             db().commit()
             session["uid"] = new_id
             session["username"] = u
+            log_event("signup", username=u)
             return redirect(url_for("index"))
     return render_template("auth.html", mode="signup", err=err)
 
@@ -555,7 +567,7 @@ def cards_page():
 @app.route("/add")
 @login_required
 def add_page():
-    return render_template("add.html", page="add")
+    return render_template("add.html", page="portfolio")
 
 
 @app.route("/movers")
@@ -674,6 +686,7 @@ def api_add():
     if not card.get("image"):
         # TCGdex has no art for this one — see if pokemontcg.io does. Once, ever.
         resolve_alt_image(card_id, card_id.rsplit("-", 1)[0], card.get("localId"))
+    log_event("card_added", card=card_id, name=card.get("name"))
     refresh_price(card_id, force=True)
     grade = (d.get("grade") or "").strip()
     db().execute("""INSERT INTO holdings (user_id,card_id,qty,paid,manual_gbp,grade)
@@ -998,7 +1011,7 @@ def watchlist_page():
                     if r["price"] and r["prev"] else None)
         with_images(r)
     alerts = user_alerts(uid())
-    return render_template("watchlist.html", rows=rows, alerts=alerts, page="market")
+    return render_template("watchlist.html", rows=rows, alerts=alerts, page="portfolio")
 
 
 @app.route("/api/watchlist", methods=["POST", "DELETE"])
@@ -1018,6 +1031,7 @@ def api_watchlist():
         upsert_card(card)
     db().execute("""INSERT INTO watchlist (user_id, card_id) VALUES (%s,%s)
                     ON CONFLICT DO NOTHING""", (uid(), card_id))
+    log_event("watchlist_added", card=card_id)
     db().commit()
     refresh_price(card_id)
     return jsonify(watched=True)
@@ -1062,6 +1076,7 @@ def api_sales():
         db().execute("DELETE FROM holdings WHERE id=%s", (hid,))
     else:
         db().execute("UPDATE holdings SET qty=qty-%s WHERE id=%s", (qty, hid))
+    log_event("card_sold", card=row["card_id"], qty=qty, sold=float(d.get("sold") or 0))
     db().commit()
     return jsonify(ok=True)
 
@@ -1199,32 +1214,63 @@ def market():
                            spark=sparklines(list(shown)), page="market")
 
 
-# One definition of the navigation, rendered by base.html. Previously each
-# template hand-wrote its own segmented control and they drifted out of sync —
-# the Movers tab listed two sections while Market listed three, so Watchlist
-# was only reachable after landing on Market first.
+# Navigation, rebuilt.
+#
+# The old design had two stacked layers — five bottom tabs plus a segmented
+# control — which meant up to ten tap targets before any content, and a "+"
+# button wedged into the tab bar as a third pattern. Now:
+#
+#   3 tabs        Portfolio · Browse · You      (the only persistent nav)
+#   1 add button  floating, always reachable
+#   everything else is a pushed page with a back arrow
+#
+# Not every destination deserves to be a tab. Most are things you visit, do
+# something, and leave.
 TABS = [
-    ("portfolio", "Portfolio", "/",        [("Overview", "/"), ("Insights", "/insights")]),
-    ("cards",     "Cards",     "/cards",   [("Yours", "/cards"), ("Sets", "/sets"),
-                                            ("Sold", "/sold")]),
-    ("market",    "Market",    "/market",  [("Market", "/market"), ("Your movers", "/movers"),
-                                            ("Watchlist", "/watchlist")]),
-    ("profile",   "You",       "/profile", [("Settings", "/profile"), ("Import", "/import")]),
+    ("portfolio", "Portfolio", "/",        "M3 17l5-6 4 3 5-8 4 5"),
+    ("browse",    "Browse",    "/market",  "M4 14l6-6 4 4 6-6 M14 6h6v6"),
+    ("you",       "You",       "/profile", "M12 4a4 4 0 110 8 4 4 0 010-8 M4 21c0-4 4-6 8-6s8 2 8 6"),
 ]
-SUBNAV = {t[0]: t[3] for t in TABS}
+
+# child page -> (title, parent url). Anything listed here renders a back header
+# instead of appearing in the tab bar.
+PAGES = {
+    "/cards":     ("Your cards",   "/"),
+    "/watchlist": ("Watchlist",    "/"),
+    "/insights":  ("Insights",     "/"),
+    "/movers":    ("Your movers",  "/"),
+    "/sets":      ("All sets",     "/market"),
+    "/sold":      ("Sold",         "/profile"),
+    "/import":    ("Import cards", "/profile"),
+    "/stats":     ("Beta stats",   "/profile"),
+    "/compare":   ("Compare",      "/market"),
+    "/add":       ("Add a card",   "/"),
+}
 
 
 @app.context_processor
 def inject_nav():
-    # A section shows its sub-nav only when you're on one of its own pages.
-    # Detail views (a card, a set, the add sheet) get none — a sub-nav with
-    # nothing highlighted just looks broken.
-    sub = []
-    for items in SUBNAV.values():
-        if any(request.path == u for _, u in items):
-            sub = items
-            break
-    return {"TABS": TABS, "SUBNAV": sub, "HERE": request.path}
+    here = request.path
+    crumb = PAGES.get(here)
+    if crumb is None and here.startswith("/card/"):
+        crumb = ("", "/cards")
+    elif crumb is None and here.startswith("/set/"):
+        crumb = ("", "/sets")
+    # Which tab lights up is derived from the path, walking up parents until we
+    # reach one. Routes don't have to declare it, so it can't drift.
+    tab_for = {u: k for k, _, u, _ in TABS}
+    node = here
+    seen = 0
+    while node not in tab_for and seen < 5:
+        parent = PAGES.get(node, (None, None))[1]
+        if parent is None:
+            parent = ("/cards" if node.startswith("/card/")
+                      else "/sets" if node.startswith("/set/") else "/")
+        node = parent
+        seen += 1
+    return {"TABS": TABS, "HERE": here, "NAVTAB": tab_for.get(node, "portfolio"),
+            "CRUMB_TITLE": crumb[0] if crumb else None,
+            "CRUMB_BACK": crumb[1] if crumb else None}
 
 
 @app.context_processor
@@ -1269,6 +1315,7 @@ def api_feedback():
             f"page: `{d.get('page') or '?'}`\n{msg[:1500]}"}, timeout=8)
     except requests.RequestException:
         return jsonify(error="Couldn't send. Try again."), 502
+    log_event("feedback", chars=len(msg))
     return jsonify(ok=True)
 
 
@@ -1374,7 +1421,7 @@ def sets_page():
                      key=lambda kv: max((e.get("release") or "") for e in kv[1]), reverse=True)
     upcoming.sort(key=lambda e: e["release"])
     return render_template("sets.html", series=ordered, upcoming=upcoming[:6],
-                           today=today, page="cards")
+                           today=today, page="browse")
 
 
 # -------------------------------------------------------------------- insights
@@ -1436,7 +1483,7 @@ def compare_page():
             (cid,)).fetchone() or {}).get("gbp")
         row["spark"] = sparklines([cid], 60).get(cid, [])
         cards.append(with_images(row))
-    return render_template("compare.html", cards=cards, page="cards")
+    return render_template("compare.html", cards=cards, page="browse")
 
 
 # ---------------------------------------------------------------- bulk import
@@ -1446,7 +1493,7 @@ def compare_page():
 @login_required
 def import_page():
     if request.method == "GET":
-        return render_template("import.html", page="profile")
+        return render_template("import.html", page="you")
 
     text = (request.get_json(force=True) or {}).get("text", "")
     rows, added, failed = [], 0, []
@@ -1498,6 +1545,7 @@ def import_page():
     if added:
         ensure_snapshot(uid(), db(), force=True)
         db().commit()
+    log_event("import", added=added, failed=len(failed), submitted=len(rows))
     return jsonify(added=added, failed=failed[:20], total=len(rows))
 
 
@@ -1521,6 +1569,81 @@ def api_custom():
                   int(d.get("qty") or 1), d.get("paid"), d.get("value"), d.get("note")))
     db().commit()
     return jsonify(ok=True)
+
+
+def log_event(kind, path=None, conn=None, **meta):
+    """Record a usage event. Never allowed to break the request that triggered it."""
+    try:
+        (conn or db()).execute(
+            "INSERT INTO events (user_id, kind, path, meta) VALUES (%s,%s,%s,%s)",
+            (session.get("uid"), kind, path or request.path,
+             Json(meta) if meta else None))
+        if conn is None:
+            db().commit()
+    except Exception:
+        pass
+
+
+# Pages worth counting. Static files, API calls and the health check would
+# drown the signal.
+_SKIP_PATHS = ("/static/", "/api/", "/ph/", "/icon.svg", "/manifest.json", "/export/")
+
+
+@app.after_request
+def log_pageview(resp):
+    if (request.method == "GET" and resp.status_code == 200
+            and session.get("uid")
+            and not request.path.startswith(_SKIP_PATHS)
+            and "text/html" in (resp.content_type or "")):
+        log_event("pageview")
+    return resp
+
+
+@app.route("/stats")
+@login_required
+def stats_page():
+    """Beta dashboard. Only the account named in ADMIN_USER can see it."""
+    me = db().execute("SELECT username FROM users WHERE id=%s", (uid(),)).fetchone()
+    admin = os.environ.get("ADMIN_USER")
+    if admin and me["username"] != admin:
+        abort(403)
+
+    q = lambda sql, *a: db().execute(sql, a).fetchall()
+    totals = db().execute("""
+        SELECT (SELECT COUNT(*) FROM users) AS users,
+               (SELECT COUNT(*) FROM users WHERE created > now() - interval '7 days') AS new_users,
+               (SELECT COUNT(DISTINCT user_id) FROM events WHERE at > now() - interval '1 day') AS dau,
+               (SELECT COUNT(DISTINCT user_id) FROM events WHERE at > now() - interval '7 days') AS wau,
+               (SELECT COUNT(*) FROM holdings) AS holdings,
+               (SELECT COUNT(*) FROM events WHERE at > now() - interval '7 days') AS events
+    """).fetchone()
+
+    return render_template(
+        "stats.html",
+        t=totals,
+        people=q("""
+            SELECT u.username, u.created,
+                   (SELECT COUNT(*) FROM holdings h WHERE h.user_id=u.id) AS cards,
+                   (SELECT COUNT(*) FROM events e WHERE e.user_id=u.id) AS events,
+                   (SELECT MAX(at) FROM events e WHERE e.user_id=u.id) AS last_seen
+            FROM users u ORDER BY last_seen DESC NULLS LAST"""),
+        actions=q("""
+            SELECT kind, COUNT(*) AS n FROM events
+            WHERE kind <> 'pageview' AND at > now() - interval '30 days'
+            GROUP BY kind ORDER BY n DESC"""),
+        pages=q("""
+            SELECT path, COUNT(*) AS n, COUNT(DISTINCT user_id) AS people
+            FROM events WHERE kind='pageview' AND at > now() - interval '7 days'
+            GROUP BY path ORDER BY n DESC LIMIT 12"""),
+        daily=q("""
+            SELECT at::date AS day, COUNT(DISTINCT user_id) AS people, COUNT(*) AS n
+            FROM events WHERE at > now() - interval '14 days'
+            GROUP BY day ORDER BY day"""),
+        recent=q("""
+            SELECT e.kind, e.path, e.meta, e.at, u.username
+            FROM events e LEFT JOIN users u ON u.id=e.user_id
+            WHERE e.kind <> 'pageview' ORDER BY e.at DESC LIMIT 25"""),
+        page="profile")
 
 
 def refresh_all():

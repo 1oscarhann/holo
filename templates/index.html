@@ -106,7 +106,7 @@
 
 
 {% if activity %}
-<section class="sec"><h2>Recent activity <a href="/insights" class="tiny muted" style="float:right;text-decoration:underline">Insights</a></h2>
+<section class="sec"><h2>Recent activity</h2>
 {% for a in activity %}
 <div class="row">
   <img {{ img_attrs(a) }} alt="">
@@ -121,6 +121,14 @@
 {% endfor %}
 </section>
 {% endif %}
+
+
+<nav class="jump">
+  <a href="/cards"><b>Your cards</b><span>Every holding, sorted by value</span></a>
+  <a href="/movers"><b>Your movers</b><span>What moved in your collection</span></a>
+  <a href="/watchlist"><b>Watchlist</b><span>Cards you're tracking but don't own</span></a>
+  <a href="/insights"><b>Insights</b><span>Best buys, value by rarity, flips</span></a>
+</nav>
 
 {% endif %}
 {% endblock %}

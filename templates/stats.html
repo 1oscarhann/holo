@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="sec" style="padding-top:24px">
+  <h2>Beta stats <span class="tiny muted">{{ VERSION }}</span></h2>
+  <div class="statgrid">
+    <div><b class="num">{{ t.users }}</b><span>Accounts</span></div>
+    <div><b class="num">{{ t.new_users }}</b><span>New this week</span></div>
+    <div><b class="num">{{ t.dau }}</b><span>Active today</span></div>
+    <div><b class="num">{{ t.wau }}</b><span>Active this week</span></div>
+    <div><b class="num">{{ t.holdings }}</b><span>Cards added</span></div>
+    <div><b class="num">{{ t.events }}</b><span>Events / 7d</span></div>
+  </div>
+</section>
+
+{% if daily %}
+<section class="sec"><h2>Daily actives <span class="tiny muted">14 days</span></h2>
+  <div class="bars">
+    {% set peak = (daily | map(attribute='people') | max) or 1 %}
+    {% for d in daily %}
+    <div class="bcol" title="{{ d.day }}: {{ d.people }} people, {{ d.n }} events">
+      <i style="height:{{ (d.people / peak * 100) | round }}%"></i>
+      <span>{{ d.day.strftime('%d') }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="sec"><h2>People</h2>
+  {% for p in people %}
+  <div class="row slim">
+    <div class="t"><div class="n">{{ p.username }}</div>
+      <div class="m">{{ p.cards }} card{{ '' if p.cards == 1 else 's' }} · {{ p.events }} events</div></div>
+    <div class="r"><div class="p tiny muted">
+      {% if p.last_seen %}{{ p.last_seen.strftime('%d %b %H:%M') }}{% else %}never opened{% endif %}</div></div>
+  </div>
+  {% endfor %}
+</section>
+
+{% if actions %}
+<section class="sec"><h2>What they did <span class="tiny muted">30 days</span></h2>
+  {% for a in actions %}
+  <div class="row slim"><div class="t"><div class="n">{{ a.kind.replace('_', ' ') }}</div></div>
+    <div class="c num">{{ a.n }}</div></div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="sec"><h2>Top pages <span class="tiny muted">7 days</span></h2>
+  {% for p in pages %}
+  <div class="row slim"><div class="t"><div class="n">{{ p.path }}</div>
+    <div class="m">{{ p.people }} {{ 'person' if p.people == 1 else 'people' }}</div></div>
+    <div class="c num">{{ p.n }}</div></div>
+  {% endfor %}
+</section>
+
+<section class="sec"><h2>Recent actions</h2>
+  {% for r in recent %}
+  <div class="row slim"><div class="t">
+    <div class="n">{{ r.username or 'anon' }} · {{ r.kind.replace('_', ' ') }}</div>
+    <div class="m">{% if r.meta %}{{ r.meta.get('name') or r.meta.get('card') or r.meta.get('added') or '' }}{% endif %}
+      {{ r.at.strftime('%d %b %H:%M') }}</div></div></div>
+  {% else %}<div class="hint">No actions logged yet.</div>{% endfor %}
+</section>
+{% endblock %}

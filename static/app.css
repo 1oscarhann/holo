@@ -350,3 +350,47 @@ textarea{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line)
 .money::before{content:'£';position:absolute;left:11px;top:50%;transform:translateY(-50%);
   color:var(--ink3);font-size:14px;pointer-events:none;z-index:1}
 .money input{padding-left:24px!important;width:100%}
+
+/* ---- beta stats -------------------------------------------------------- */
+.statgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px 10px;margin-top:6px}
+.statgrid b{display:block;font-size:22px;font-weight:600;line-height:1.1}
+.statgrid span{font-size:11.5px;color:var(--ink2)}
+.bars{display:flex;align-items:flex-end;gap:4px;height:88px;margin-top:6px}
+.bcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;
+  height:100%;gap:5px}
+.bcol i{width:100%;background:var(--paper);border-radius:2px;min-height:2px;display:block}
+.bcol span{font-size:9.5px;color:var(--ink3)}
+
+/* ---- pushed-page header ------------------------------------------------ */
+.pagehead{display:flex;align-items:center;gap:10px;padding:18px 0 10px;margin-bottom:4px}
+.pagehead .back{width:34px;height:34px;margin-left:-8px;border-radius:50%;flex:none;
+  display:flex;align-items:center;justify-content:center;color:var(--ink)}
+.pagehead .back:active{background:var(--bg2)}
+.pagehead .back svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.pagehead h1{font-size:20px;font-weight:600;letter-spacing:-.2px}
+
+/* ---- floating add button ----------------------------------------------- */
+.fab{position:fixed;right:18px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:55;
+  width:54px;height:54px;border-radius:50%;background:var(--paper);color:var(--bg);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 6px 20px rgba(0,0,0,.45);transition:transform .14s}
+.fab svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}
+.fab:active{transform:scale(.92)}
+
+/* three tabs now, so let them breathe */
+nav.tabs{grid-template-columns:repeat(3,1fr)!important}
+nav.tabs a.plus{display:none}
+
+/* ---- section jump list ------------------------------------------------- */
+.jump{margin:8px 0 30px;border-top:1px solid var(--line)}
+.jump.top{margin:14px 0 6px;border-top:0}
+.jump a{display:block;padding:15px 26px 15px 0;border-bottom:1px solid var(--line);
+  position:relative}
+.jump.top a{border:1px solid var(--line);border-radius:12px;background:var(--bg2);
+  padding:15px 26px 15px 15px}
+.jump b{display:block;font-size:15px;font-weight:600}
+.jump span{display:block;font-size:12.5px;color:var(--ink2);margin-top:2px}
+.jump a::after{content:'';position:absolute;right:6px;top:50%;width:7px;height:7px;
+  border-right:1.8px solid var(--ink3);border-top:1.8px solid var(--ink3);
+  transform:translateY(-50%) rotate(45deg)}
