@@ -180,16 +180,16 @@ def placeholder(set_id, local_id):
     sub = escape(str(set_id).upper()[:10])
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 245 342">
 <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-<stop offset="0" stop-color="#222834"/><stop offset="1" stop-color="#171b23"/>
+<stop offset="0" stop-color="#2a211c"/><stop offset="1" stop-color="#1b1512"/>
 </linearGradient></defs>
 <rect width="245" height="342" rx="14" fill="url(#g)"/>
 <rect x="6" y="6" width="233" height="330" rx="10" fill="none"
-      stroke="#333b4a" stroke-width="1.5"/>
-<text x="122.5" y="168" text-anchor="middle" fill="#6b7688"
+      stroke="#3b2f27" stroke-width="1.5"/>
+<text x="122.5" y="168" text-anchor="middle" fill="#8a7264"
       font-family="system-ui,sans-serif" font-size="42" font-weight="700">{label}</text>
-<text x="122.5" y="196" text-anchor="middle" fill="#5b6478"
+<text x="122.5" y="196" text-anchor="middle" fill="#77604f"
       font-family="system-ui,sans-serif" font-size="14" letter-spacing="2">{sub}</text>
-<text x="122.5" y="300" text-anchor="middle" fill="#454d5e"
+<text x="122.5" y="300" text-anchor="middle" fill="#4e3f36"
       font-family="system-ui,sans-serif" font-size="11" letter-spacing="1">NO ART</text>
 </svg>"""
     return app.response_class(svg, mimetype="image/svg+xml",
@@ -1359,7 +1359,7 @@ def manifest():
         "description": "Pok\u00e9mon card portfolio tracker",
         "start_url": "/", "scope": "/",
         "display": "standalone", "orientation": "portrait",
-        "background_color": "#0b0d10", "theme_color": "#0b0d10",
+        "background_color": "#0d0907", "theme_color": "#0d0907",
         "icons": [
             {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
             {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable"},
@@ -1371,9 +1371,9 @@ def manifest():
 def icon():
     svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
 <defs><linearGradient id="h" x1="0" y1="0" x2="1" y2="1">
-<stop offset="0" stop-color="#9fd8e8"/><stop offset=".5" stop-color="#a9c4e6"/>
-<stop offset="1" stop-color="#c9b8ee"/></linearGradient></defs>
-<rect width="512" height="512" rx="112" fill="#0b0d10"/>
+<stop offset="0" stop-color="#ff6a3d"/><stop offset=".5" stop-color="#ffa14d"/>
+<stop offset="1" stop-color="#ffd08a"/></linearGradient></defs>
+<rect width="512" height="512" rx="112" fill="#0d0907"/>
 <rect x="150" y="104" width="212" height="296" rx="20" fill="none"
       stroke="url(#h)" stroke-width="20"/>
 <path d="M196 300 L242 236 L286 274 L330 196" fill="none" stroke="url(#h)"

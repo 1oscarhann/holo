@@ -50,7 +50,12 @@ function drawLine(canvas, points, opts = {}) {
   const X = i => padX + (i / (points.length - 1)) * (W - padX * 2);
   const Y = v => H - padY - ((v - lo) / (hi - lo)) * (H - padY * 2);
   const up = ys[ys.length - 1] >= ys[0];
-  const col = opts.color || (up ? '#6fb894' : '#d4776a');
+  // Read the palette rather than hardcoding: these defaults are what every
+  // sparkline outside the portfolio tab uses, and a fixed hex would leave them
+  // on one theme's colours while the rest of the page followed another.
+  const cv = getComputedStyle(document.documentElement);
+  const col = opts.color ||
+    (cv.getPropertyValue(up ? '--up' : '--down').trim() || (up ? '#5fbf87' : '#ff5252'));
 
   // fill
   const g = ctx.createLinearGradient(0, 0, 0, H);

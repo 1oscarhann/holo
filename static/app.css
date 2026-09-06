@@ -921,6 +921,12 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 
 /* ---- palettes ------------------------------------------------------- */
 :root,
+[data-theme="ember"]{
+  --bg:#0d0907; --bg2:#161110; --bg3:#1d1512; --line:#241a16; --line2:#33251f;
+  --ink:#f7f0ea; --ink2:#a89890; --ink3:#6b5c55;
+  --acc:#ff6a3d; --acc-ink:#140a06; --up:#5fbf87; --down:#ff5252;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
 [data-theme="ultramarine"]{
   --bg:#06080f; --bg2:#0f1320; --bg3:#131829; --line:#171d30; --line2:#232b45;
   --ink:#eef1fb; --ink2:#949cb8; --ink3:#575e78;
@@ -937,12 +943,6 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
   --bg:#000; --bg2:#0d0d0d; --bg3:#161616; --line:#1e1e1e; --line2:#2a2a2a;
   --ink:#fff; --ink2:#9b9b9b; --ink3:#5a5a5a;
   --acc:#c8ff3d; --acc-ink:#0a0a0a; --up:#c8ff3d; --down:#ff5d5d;
-  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
-}
-[data-theme="ember"]{
-  --bg:#0d0907; --bg2:#161110; --bg3:#1d1512; --line:#241a16; --line2:#33251f;
-  --ink:#f7f0ea; --ink2:#a89890; --ink3:#6b5c55;
-  --acc:#ff6a3d; --acc-ink:#140a06; --up:#5fbf87; --down:#ff5252;
   --miss-filter:grayscale(1) brightness(.62) contrast(.9);
 }
 [data-theme="gold"]{
@@ -981,10 +981,10 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 .cell.miss img{filter:var(--miss-filter,grayscale(1) brightness(.62) contrast(.9))}
 
 /* ---- faces ---------------------------------------------------------- */
-:root,[data-font="familjen"]{--sans:"Familjen Grotesk",system-ui,-apple-system,sans-serif}
+:root,[data-font="bricolage"]{--sans:"Bricolage Grotesque",system-ui,-apple-system,sans-serif}
+[data-font="familjen"]  {--sans:"Familjen Grotesk",system-ui,-apple-system,sans-serif}
 [data-font="archivo"]   {--sans:Archivo,system-ui,-apple-system,sans-serif}
 [data-font="schibsted"] {--sans:"Schibsted Grotesk",system-ui,-apple-system,sans-serif}
-[data-font="bricolage"] {--sans:"Bricolage Grotesque",system-ui,-apple-system,sans-serif}
 [data-font="chivo"]     {--sans:Chivo,system-ui,-apple-system,sans-serif}
 [data-font="intertight"]{--sans:"Inter Tight",system-ui,-apple-system,sans-serif}
 [data-font="instrument"]{--sans:"Instrument Sans",system-ui,-apple-system,sans-serif}

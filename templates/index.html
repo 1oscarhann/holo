@@ -165,6 +165,9 @@ const cssv = getComputedStyle(document.documentElement);
 const UP = cssv.getPropertyValue('--acc').trim() || '#8fb3d9';
 const DOWN = cssv.getPropertyValue('--down').trim() || '#d4776a';
 
+// the first family in --sans, unquoted: the canvas needs a real family name
+const FACE = (cssv.getPropertyValue('--sans').split(',')[0] || 'Archivo')
+               .trim().replace(/^["']|["']$/g, '');
 const PADX = 5;                 // keeps the end dot off the canvas edge
 let cur = [], curCol = UP, curN = 30;
 
@@ -253,45 +256,52 @@ share.onclick = async () => {
   const S = {{ {'total': s.total, 'chg30': s.chg30, 'chg7': s.chg7, 'cards': s.cards, 'unique': s.unique,
                'top': s.top[:3]|map(attribute='name')|list, 'topv': s.top[:3]|map(attribute='value')|list,
                'user': session.username}|tojson }};
+  // Canvas gets no cascade, so the palette is read out and passed in. Without
+  // this the shared image is stamped with whatever theme was hardcoded here,
+  // not the one the person is actually looking at.
+  const T = (n, fb) => cssv.getPropertyValue(n).trim() || fb;
+  const C = {bg:T('--bg','#0d0907'), ink:T('--ink','#f7f0ea'), ink2:T('--ink2','#a89890'),
+             ink3:T('--ink3','#6b5c55'), line:T('--line','#241a16'), panel:T('--bg2','#161110'),
+             up:T('--up','#5fbf87'), down:T('--down','#ff5252'), acc:T('--acc','#ff6a3d')};
   const W = 1080, H = 1350, c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');
-  x.fillStyle = '#0b0d10'; x.fillRect(0, 0, W, H);
-  await document.fonts.load('700 120px "Archivo"');
-  const font = (w, px) => x.font = `${w} ${px}px Archivo, system-ui, sans-serif`;
-  x.fillStyle = '#98a1ad'; font(400, 40); x.fillText(S.user + "'s collection", 80, 150);
+  x.fillStyle = C.bg; x.fillRect(0, 0, W, H);
+  await document.fonts.load('700 120px ' + JSON.stringify(FACE));
+  const font = (w, px) => x.font = `${w} ${px}px ${JSON.stringify(FACE)}, system-ui, sans-serif`;
+  x.fillStyle = C.ink2; font(400, 40); x.fillText(S.user + "'s collection", 80, 150);
   // holo value
   const g = x.createLinearGradient(80, 0, 900, 0);
-  ['#eef1f5','#eef1f5','#a9c4e6','#c9b8ee','#9fd8e8','#a9c4e6','#eef1f5'].forEach((col, i, a) => g.addColorStop(i / (a.length - 1), col));
+  [C.ink, C.ink, C.acc, C.up, C.acc, C.ink, C.ink].forEach((col, i, a) => g.addColorStop(i / (a.length - 1), col));
   x.fillStyle = g; font(600, 150); x.fillText('£' + S.total.toLocaleString('en-GB', {minimumFractionDigits: 2}), 72, 300);
   // chips
   let cx = 80;
   [['7d', S.chg7], ['30d', S.chg30]].forEach(([l, v]) => {
     const t = l + '  ' + (v.pct == null ? '—' : (v.pct > 0 ? '+' : '') + v.pct.toFixed(2) + '%');
     font(500, 38); const w = x.measureText(t).width + 56;
-    x.fillStyle = '#12151a'; x.beginPath(); x.roundRect(cx, 350, w, 76, 16); x.fill();
-    x.fillStyle = v.pct > 0 ? '#6fb894' : v.pct < 0 ? '#d4776a' : '#98a1ad'; x.fillText(t, cx + 28, 402); cx += w + 16;
+    x.fillStyle = C.panel; x.beginPath(); x.roundRect(cx, 350, w, 76, 16); x.fill();
+    x.fillStyle = v.pct > 0 ? C.up : v.pct < 0 ? C.down : C.ink2; x.fillText(t, cx + 28, 402); cx += w + 16;
   });
   // chart
   const pts = series.slice(-30).map(p => p.total);
   if (pts.length > 1) {
     const lo = Math.min(...pts), hi = Math.max(...pts) || 1, top = 500, bot = 800;
     const X = i => 80 + i / (pts.length - 1) * 920, Y = v => bot - (v - lo) / ((hi - lo) || 1) * (bot - top);
-    const up = pts[pts.length-1] >= pts[0], col = up ? '#6fb894' : '#d4776a';
+    const up = pts[pts.length-1] >= pts[0], col = up ? C.acc : C.down;
     const fg = x.createLinearGradient(0, top, 0, bot); fg.addColorStop(0, col + '44'); fg.addColorStop(1, col + '00');
     x.beginPath(); x.moveTo(X(0), bot); pts.forEach((v, i) => x.lineTo(X(i), Y(v))); x.lineTo(X(pts.length-1), bot); x.closePath(); x.fillStyle = fg; x.fill();
     x.beginPath(); pts.forEach((v, i) => i ? x.lineTo(X(i), Y(v)) : x.moveTo(X(i), Y(v))); x.strokeStyle = col; x.lineWidth = 6; x.lineJoin = 'round'; x.stroke();
   }
   // top 3
-  x.strokeStyle = '#1e232b'; x.lineWidth = 2;
+  x.strokeStyle = C.line; x.lineWidth = 2;
   S.top.forEach((n, i) => {
     const y = 900 + i * 110;
     x.beginPath(); x.moveTo(80, y - 36); x.lineTo(1000, y - 36); x.stroke();
-    x.fillStyle = '#eef1f5'; font(600, 42); x.fillText(n.length > 26 ? n.slice(0, 25) + '…' : n, 80, y + 18);
+    x.fillStyle = C.ink; font(600, 42); x.fillText(n.length > 26 ? n.slice(0, 25) + '…' : n, 80, y + 18);
     const v = '£' + S.topv[i].toLocaleString('en-GB', {minimumFractionDigits: 2});
     x.textAlign = 'right'; x.fillText(v, 1000, y + 18); x.textAlign = 'left';
   });
-  x.fillStyle = '#5b636f'; font(400, 34); x.fillText(`${S.cards} cards · ${S.unique} unique`, 80, 1280);
-  x.textAlign = 'right'; x.fillStyle = '#98a1ad'; font(700, 40); x.fillText('Holo', 1000, 1280); x.textAlign = 'left';
+  x.fillStyle = C.ink3; font(400, 34); x.fillText(`${S.cards} cards · ${S.unique} unique`, 80, 1280);
+  x.textAlign = 'right'; x.fillStyle = C.ink2; font(700, 40); x.fillText('Holo', 1000, 1280); x.textAlign = 'left';
 
   c.toBlob(async blob => {
     const file = new File([blob], 'holo.png', {type: 'image/png'});

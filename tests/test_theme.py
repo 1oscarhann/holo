@@ -49,7 +49,7 @@ def test_every_palette_in_the_picker_exists_in_the_stylesheet(client):
     ids = re.findall(r'"([a-z]+)"', listed)
     assert len(ids) >= 8
     for tid in ids:
-        assert f'[data-theme="{tid}"]' in css or tid == "ultramarine", tid
+        assert f'[data-theme="{tid}"]' in css or tid == "ember", tid
 
 
 def test_every_face_in_the_picker_has_a_font_stack(client):
@@ -58,15 +58,15 @@ def test_every_face_in_the_picker_has_a_font_stack(client):
     ids = re.findall(r'^\s{4}([a-z]+):\s+"', js, re.M)
     assert len(ids) >= 8
     for fid in ids:
-        assert f'[data-font="{fid}"]' in css or fid == "familjen", fid
+        assert f'[data-font="{fid}"]' in css or fid == "bricolage", fid
 
 
 def test_the_default_theme_and_face_are_defined_on_bare_root(client):
     """A first-time visitor has nothing in localStorage, so the tokens have to
     resolve with no data-attribute stamped at all."""
     css = open("static/app.css").read()
-    assert re.search(r':root,\s*\[data-theme="ultramarine"\]\{', css)
-    assert re.search(r':root,\[data-font="familjen"\]\{', css)
+    assert re.search(r':root,\s*\[data-theme="ember"\]\{', css)
+    assert re.search(r':root,\[data-font="bricolage"\]\{', css)
 
 
 def test_no_monospace_face_is_fetched_any_more(client):

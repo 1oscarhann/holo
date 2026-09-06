@@ -29,8 +29,8 @@
     return (v && allowed.indexOf(v) !== -1) ? v : fallback;
   }
 
-  var theme = read("holo.theme", "ultramarine", THEMES);
-  var face  = read("holo.font", "familjen", Object.keys(FACES));
+  var theme = read("holo.theme", "ember", THEMES);
+  var face  = read("holo.font", "bricolage", Object.keys(FACES));
 
   var root = document.documentElement;
   root.setAttribute("data-theme", theme);

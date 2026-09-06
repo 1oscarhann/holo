@@ -232,7 +232,16 @@ same time — 500 and `-.02em` were tuned for a face with fixed advance widths.
 Palette and typeface are chosen by the person using the app, on the You tab.
 Nine palettes (including two light ones — every other card tracker is dark) and
 eight faces, each a complete token set so adding one is additive and cannot
-half-apply.
+half-apply. The default is **Ember + Bricolage Grotesque**: a near-black with a
+warm orange accent, and a grotesque with enough character in its figures to
+carry the portfolio total.
+
+Nothing paints a colour it hasn't read from the tokens. `drawLine`'s defaults
+come from `--up`/`--down` rather than a fixed hex, so every sparkline in the app
+follows the theme; and the share card, which draws to a canvas and so gets no
+cascade, reads the palette and the selected family out of the computed style and
+passes them into the drawing code. Both were previously stamped with one theme's
+colours regardless of what was on screen.
 
 `static/theme.js` is loaded **synchronously in `<head>`, before `app.css`**.
 That ordering is the whole feature: stamped after the stylesheet, every page
