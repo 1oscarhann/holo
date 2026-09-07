@@ -137,7 +137,7 @@ def test_usd_comps_are_converted_to_gbp(ditto, monkeypatch):
     stub_comps(monkeypatch, [{"title": f"Ditto V PSA 10", "price": 100.0, "currency": "USD"}] * 3)
     with holo.raw_db() as c:
         row = holo.refresh_graded_price(ditto, "PSA 10", force=True, conn=c)
-    assert row["gbp"] == round(100.0 * holo.USD_GBP, 2)
+    assert row["gbp"] == round(100.0 * holo.fx_rate("USD_GBP"), 2)
 
 
 def test_a_thin_sample_is_not_priced_at_all(ditto, monkeypatch):

@@ -28,12 +28,19 @@ from werkzeug.security import generate_password_hash             # noqa: E402
 import app as holo                                               # noqa: E402
 
 # Every table app.py writes to, children before parents.
-# graded_prices and the import staging tables are listed explicitly: the first
-# has no user foreign key, so a cascade from users never reaches it and rows
-# leak into the next test.
-TABLES = ("events", "custom_items", "alerts", "watchlist", "sales", "snapshots",
-          "import_rows", "import_jobs", "holdings", "graded_prices", "prices",
-          "set_cards", "cards", "users")
+# Hand-maintaining this list went wrong twice: a table without a foreign key to
+# users (graded_prices, then fx_rates) is not reached by a cascade from users,
+# so rows leaked into the next test and surfaced as failures somewhere else
+# entirely. Ask the database instead, so a new table is covered the day it
+# exists.
+def _all_tables():
+    with holo.raw_db() as c:
+        rows = c.execute("""SELECT tablename FROM pg_tables
+                            WHERE schemaname='public'""").fetchall()
+    return [r["tablename"] for r in rows]
+
+
+TABLES = _all_tables()
 
 
 @pytest.fixture(autouse=True)

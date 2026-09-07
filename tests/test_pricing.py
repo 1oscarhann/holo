@@ -27,14 +27,14 @@ def test_cardmarket_is_preferred_over_tcgplayer():
                         "tcgplayer": {"holofoil": {"marketPrice": 999.0}}}}
     gbp, src = holo.price_from(card)
     assert src == "cardmarket.trend"
-    assert gbp == round(100.0 * holo.EUR_GBP, 2)
+    assert gbp == round(100.0 * holo.fx_rate("EUR_GBP"), 2)
 
 
 @pytest.mark.parametrize("key", ["trend", "avg7", "avg", "avg30", "low"])
 def test_each_cardmarket_key_is_accepted(key):
     gbp, src = holo.price_from(cm(**{key: 50.0}))
     assert src == f"cardmarket.{key}"
-    assert gbp == round(50.0 * holo.EUR_GBP, 2)
+    assert gbp == round(50.0 * holo.fx_rate("EUR_GBP"), 2)
 
 
 def test_cardmarket_keys_are_tried_in_priority_order():
@@ -52,7 +52,7 @@ def test_falls_through_to_the_next_key_when_one_is_missing():
 def test_tcgplayer_variants_are_accepted_when_cardmarket_is_absent(variant):
     gbp, src = holo.price_from(tp(**{variant: {"marketPrice": 20.0}}))
     assert src == f"tcgplayer.{variant}"
-    assert gbp == round(20.0 * holo.USD_GBP, 2)
+    assert gbp == round(20.0 * holo.fx_rate("USD_GBP"), 2)
 
 
 # ----------------------------------------------------------- currency and fx
@@ -60,7 +60,7 @@ def test_tcgplayer_variants_are_accepted_when_cardmarket_is_absent(variant):
 def test_eur_and_usd_use_different_rates():
     """Both rates are hardcoded constants, not live FX — a known inaccuracy in
     every price shown. If they ever collapse to one number that is a bug."""
-    assert holo.EUR_GBP != holo.USD_GBP
+    assert holo.fx_rate("EUR_GBP") != holo.fx_rate("USD_GBP")
     eur, _ = holo.price_from(cm(trend=100.0))
     usd, _ = holo.price_from(tp(holofoil={"marketPrice": 100.0}))
     assert eur != usd
@@ -68,7 +68,7 @@ def test_eur_and_usd_use_different_rates():
 
 def test_prices_are_rounded_to_pence():
     gbp, _ = holo.price_from(cm(trend=1.0 / 3))
-    assert gbp == round((1.0 / 3) * holo.EUR_GBP, 2)
+    assert gbp == round((1.0 / 3) * holo.fx_rate("EUR_GBP"), 2)
     assert len(str(gbp).split(".")[-1]) <= 2
 
 

@@ -36,8 +36,12 @@ from werkzeug.security import check_password_hash, generate_password_hash
 DATABASE_URL = os.environ["DATABASE_URL"]
 CRON_SECRET = os.environ.get("CRON_SECRET")
 TCGDEX = "https://api.tcgdex.net/v2/en"
+# Fallbacks only. The live rate is fetched daily into fx_rates; these are what
+# the app uses when that has never succeeded, so they should be roughly right
+# but are not expected to be current. Read them through fx_rate(), never directly.
 EUR_GBP = float(os.environ.get("EUR_GBP", "0.85"))
 USD_GBP = float(os.environ.get("USD_GBP", "0.78"))
+FX_API = os.environ.get("FX_API", "https://api.frankfurter.app")
 PRICE_TTL_HOURS = 20
 PTCGIO_IMG = "https://images.pokemontcg.io"
 VERSION = os.environ.get("APP_VERSION", "0.16.0-beta")
@@ -302,6 +306,14 @@ CREATE TABLE IF NOT EXISTS graded_prices (
   source TEXT, fetched TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY (card_id, grade, day));
 CREATE INDEX IF NOT EXISTS graded_card ON graded_prices (card_id, grade, day DESC);
+
+-- Live FX. EUR_GBP and USD_GBP were hardcoded, which quietly skewed every
+-- TCGplayer fallback and, once graded pricing landed, every graded price too:
+-- eBay comps are USD and were being multiplied by a constant last checked by
+-- hand. Shared across users like every other price.
+CREATE TABLE IF NOT EXISTS fx_rates (
+  pair TEXT, day DATE, rate REAL, source TEXT, fetched TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (pair, day));
 """
 
 
@@ -429,6 +441,72 @@ def tcgdex(path, **params):
     return None
 
 
+# ------------------------------------------------------------------ live FX
+
+# price_from() is called in loops over every holding, so the rate cannot be a
+# database read per card. It is cached in-process and refreshed at most hourly;
+# a miss anywhere in the chain falls through to the hardcoded constant, so a
+# dead FX feed costs accuracy rather than the page.
+_FX = {"at": 0.0, "rates": {}}
+_FX_TTL = 3600
+FX_FALLBACK = {"EUR_GBP": EUR_GBP, "USD_GBP": USD_GBP}
+
+
+def fx_rate(pair):
+    """Live rate for 'EUR_GBP' / 'USD_GBP', or the hardcoded fallback."""
+    now = time.time()
+    if now - _FX["at"] > _FX_TTL:
+        _FX["at"] = now                      # stamp first: a failure must not retry per card
+        try:
+            with raw_db() as c:
+                rows = c.execute("""SELECT DISTINCT ON (pair) pair, rate FROM fx_rates
+                                    WHERE day > CURRENT_DATE - 14
+                                    ORDER BY pair, day DESC""").fetchall()
+            _FX["rates"] = {r["pair"]: r["rate"] for r in rows}
+        except Exception:
+            pass                             # keep whatever was cached
+    return _FX["rates"].get(pair) or FX_FALLBACK.get(pair, 1.0)
+
+
+def refresh_fx(conn=None):
+    """Fetch today's rates. Returns how many pairs were stored.
+
+    Frankfurter serves ECB reference rates, free and without a key. The
+    response is read defensively for the same reason the comps feed is.
+    """
+    c = conn or db()
+    today = date.today()
+    have = {r["pair"] for r in c.execute(
+        "SELECT pair FROM fx_rates WHERE day=%s", (today,)).fetchall()}
+    if len(have) >= 2:
+        return 0
+    try:
+        r = requests.get(f"{FX_API}/latest", params={"from": "GBP", "to": "EUR,USD"},
+                         timeout=10)
+        if r.status_code != 200:
+            return 0
+        rates = (r.json() or {}).get("rates") or {}
+    except (requests.RequestException, ValueError, AttributeError):
+        return 0
+
+    n = 0
+    for cur in ("EUR", "USD"):
+        v = rates.get(cur)
+        if not isinstance(v, (int, float)) or v <= 0:
+            continue
+        # the feed quotes GBP->X; we price X->GBP
+        c.execute("""INSERT INTO fx_rates (pair, day, rate, source, fetched)
+                     VALUES (%s,%s,%s,'frankfurter',now())
+                     ON CONFLICT (pair, day) DO UPDATE
+                     SET rate=EXCLUDED.rate, fetched=now()""",
+                  (f"{cur}_GBP", today, round(1.0 / float(v), 6)))
+        n += 1
+    if conn is None:
+        c.commit()
+    _FX["at"] = 0.0                          # force the cache to pick the new rates up
+    return n
+
+
 def price_from(card):
     """Return (gbp, source) from a TCGdex card object, or (None, None)."""
     p = (card or {}).get("pricing") or {}
@@ -436,12 +514,12 @@ def price_from(card):
     for k in ("trend", "avg7", "avg", "avg30", "low"):
         v = cm.get(k)
         if v:
-            return round(v * EUR_GBP, 2), f"cardmarket.{k}"
+            return round(v * fx_rate("EUR_GBP"), 2), f"cardmarket.{k}"
     tp = p.get("tcgplayer") or {}
     for variant in ("holofoil", "reverse-holofoil", "normal", "1st-edition-holofoil", "1st-edition"):
         v = (tp.get(variant) or {}).get("marketPrice")
         if v:
-            return round(v * USD_GBP, 2), f"tcgplayer.{variant}"
+            return round(v * fx_rate("USD_GBP"), 2), f"tcgplayer.{variant}"
     return None, None
 
 
@@ -608,8 +686,8 @@ def _to_gbp(amount, currency):
     if currency == "GBP":
         return amount
     if currency == "EUR":
-        return amount * EUR_GBP
-    return amount * USD_GBP          # comps are overwhelmingly USD
+        return amount * fx_rate("EUR_GBP")
+    return amount * fx_rate("USD_GBP")      # comps are overwhelmingly USD
 
 
 def crowd_graded_price(card_id, grade, conn=None):
@@ -2573,6 +2651,8 @@ def refresh_all():
     """Refresh every held card once, then snapshot every user. Returns cards refreshed."""
     n = 0
     with raw_db() as c:
+        refresh_fx(c)          # before any pricing, so today's numbers use today's rate
+        c.commit()
         ids = [r["card_id"] for r in c.execute("SELECT DISTINCT card_id FROM holdings").fetchall()]
         for cid in ids:
             if refresh_price(cid, force=True, conn=c) is not None:
