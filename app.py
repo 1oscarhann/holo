@@ -789,6 +789,88 @@ def refresh_graded_all(conn, limit=200):
     return n
 
 
+# ---------------------------------------------------------------- grading ROI
+#
+# "Is this worth sending off?" was unanswerable while every graded card was
+# priced as raw. With comps in the database it is arithmetic — but arithmetic
+# with a real unknown in it, because you do not know what grade it will come
+# back as. So this never quotes a single number: it shows what each achievable
+# grade would be worth net of costs, and leaves the gamble visible.
+#
+# The fees below are DEFAULTS AND ESTIMATES, not quotes. Grading companies
+# change pricing and tiers regularly and there is no free feed for them, so
+# every figure is env-overridable and the page says plainly that they need
+# checking against the grader's current card.
+
+GRADING_FEE_TIERS = [
+    # (label, declared value ceiling GBP, fee per card GBP)
+    ("Value",   199.0,  20.0),
+    ("Regular", 499.0,  30.0),
+    ("Express", 1499.0, 75.0),
+    ("Premium", 2499.0, 150.0),
+]
+GRADING_POSTAGE = float(os.environ.get("GRADING_POSTAGE", "25"))   # insured, round trip
+GRADING_BATCH = int(os.environ.get("GRADING_BATCH", "10"))         # cards per submission
+GRADING_MIN_UPLIFT = float(os.environ.get("GRADING_MIN_UPLIFT", "10"))
+
+
+def grading_fee(declared):
+    """Per-card fee for a declared value, plus its share of one submission's postage."""
+    for label, ceiling, fee in GRADING_FEE_TIERS:
+        if declared <= ceiling:
+            return label, fee + GRADING_POSTAGE / max(1, GRADING_BATCH)
+    label, _, fee = GRADING_FEE_TIERS[-1]
+    return label, fee + GRADING_POSTAGE / max(1, GRADING_BATCH)
+
+
+def grading_roi(card_id, raw_price, conn=None):
+    """What each gradeable outcome would be worth, net of fees.
+
+    Returns one row per grade we have real comps for, best first. Empty when
+    there are none — an ROI computed from a guessed graded price would be the
+    same confident-and-wrong failure the rest of this codebase avoids.
+    """
+    if not raw_price or raw_price <= 0:
+        return []
+    c = conn or db()
+    rows = c.execute("""SELECT DISTINCT ON (grade) grade, gbp, samples, source, day
+                        FROM graded_prices
+                        WHERE card_id=%s AND samples >= %s
+                        ORDER BY grade, day DESC""",
+                     (card_id, GRADED_MIN_SAMPLES)).fetchall()
+    out = []
+    for r in rows:
+        tier, cost = grading_fee(r["gbp"])
+        net = round(r["gbp"] - raw_price - cost, 2)
+        out.append({
+            "grade": r["grade"], "graded": r["gbp"], "samples": r["samples"],
+            "source": r["source"], "tier": tier, "cost": round(cost, 2),
+            "net": net, "multiple": round(r["gbp"] / raw_price, 1),
+            "worth_it": net >= GRADING_MIN_UPLIFT,
+        })
+    out.sort(key=lambda x: -x["net"])
+    return out
+
+
+def grading_candidates(user_id, conn=None):
+    """Raw holdings that look worth grading, best uplift first.
+
+    Only raw copies: a card already in a slab is not a candidate, and the
+    holdings unique key means the raw and graded copies are separate rows.
+    """
+    c = conn or db()
+    out = []
+    for h in holdings_with_prices(user_id, c):
+        if h["grade"] or h["price_basis"] != "raw" or not h["price"]:
+            continue
+        roi = grading_roi(h["id"], h["price"], c)
+        best = next((r for r in roi if r["worth_it"]), None)
+        if best:
+            out.append({**h, "roi": roi, "best": best})
+    out.sort(key=lambda x: -x["best"]["net"])
+    return out
+
+
 # -------------------------------------------------------------------- portfolio
 
 
@@ -1013,6 +1095,7 @@ def card_page(hid):
         abort(404)
     u = db().execute("SELECT ntfy_topic, discord_webhook FROM users WHERE id=%s", (uid(),)).fetchone()
     h["detail"] = card_detail(h["id"])
+    h["roi"] = (grading_roi(h["id"], h["price"]) if not h["grade"] else [])
     return render_template("card.html", c=h, alerts=user_alerts(uid(), h["id"]),
                            has_notify=bool(u["ntfy_topic"] or u["discord_webhook"]), page="cards")
 
@@ -1666,6 +1749,7 @@ PAGES = {
     "/sold":      ("Sold",         "/profile"),
     "/import":    ("Import cards", "/profile"),
     "/manual":    ("Manual entries", "/profile"),
+    "/grading":   ("Worth grading?", "/"),
     "/stats":     ("Admin",        "/profile"),
     "/compare":   ("Compare",      "/market"),
     "/add":       ("Add a card",   "/"),
@@ -2561,6 +2645,16 @@ def api_scan():
 
 
 # --------------------------------------------------------------- sealed / misc
+
+
+@app.route("/grading")
+@login_required
+def grading_page():
+    """Which raw cards are worth sending off, and what it would net."""
+    cands = grading_candidates(uid())
+    return render_template("grading.html", cands=cands,
+                           postage=GRADING_POSTAGE, batch=GRADING_BATCH,
+                           tiers=GRADING_FEE_TIERS, page="portfolio")
 
 
 @app.route("/manual")

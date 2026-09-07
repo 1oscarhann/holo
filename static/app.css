@@ -1077,3 +1077,29 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 .linkbtn{background:none;border:0;color:var(--ink3);font-size:11.5px;cursor:pointer;
   padding:2px 0;text-decoration:underline;font:inherit;font-size:11.5px}
 .linkbtn:hover{color:var(--down)}
+
+/* ==== worth grading? ===================================================== */
+.grade-card{border:1px solid var(--line);border-radius:var(--r2);margin-bottom:12px;
+  overflow:hidden;background:var(--bg2)}
+.grade-head{display:flex;gap:12px;align-items:center;padding:12px}
+.grade-head img{width:42px;height:58px;object-fit:cover;border-radius:var(--r);flex:none}
+.grade-head .t{flex:1;min-width:0}
+.grade-head .n{font-size:15px;font-weight:500}
+.grade-head .m{font-size:12px;color:var(--ink2);margin-top:2px}
+.grade-head .m b{color:var(--ink)}
+.grade-head .best{flex:none;text-align:right;font-size:18px;font-weight:600;
+  color:var(--up);letter-spacing:-.03em}
+.grade-head .best span{display:block;font-size:10px;font-weight:400;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-top:2px}
+.grade-rows{border-top:1px solid var(--line)}
+.grade-row{display:grid;grid-template-columns:auto 1fr auto auto auto;gap:8px;
+  align-items:baseline;padding:8px 12px;border-bottom:1px solid var(--line);
+  font-size:12.5px}
+.grade-row:last-child{border-bottom:0}
+.grade-row .g{font-weight:600;min-width:4.6em}
+.grade-row .x{color:var(--ink3);font-size:11.5px}
+.grade-row .c{color:var(--ink3)}
+.grade-row .n{font-weight:600;text-align:right;min-width:5em}
+.grade-row.good .n{color:var(--up)}
+.grade-row.bad .n{color:var(--down)}
+.grade-row .s{grid-column:1/-1;font-size:11px;color:var(--ink3);margin-top:-2px}

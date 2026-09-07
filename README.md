@@ -201,6 +201,32 @@ The response shape is read defensively — several wrappers, prices as strings o
 nested objects — because it is a third-party feed and a schema change should
 cost the graded price, not the portfolio page.
 
+## Worth grading?
+
+`/grading` answers "is this raw card worth sending off?" — which was
+unanswerable while every slab was priced as raw.
+
+Net is measured against **selling the card raw today**, because the choice is
+not "grade or do nothing", it is "grade or sell it as it is". So the raw price
+comes off the top alongside the fee and a share of one submission's postage.
+
+**Every grade with real comps is listed, not just the best one.** You cannot
+order a PSA 10, and showing only the top line would be selling a gamble as a
+certainty. A grade that would lose money is shown losing money.
+
+Nothing is computed without comps that clear `GRADED_MIN_SAMPLES` — an ROI
+built on a guessed graded price is the same confidently-wrong failure this
+codebase avoids everywhere else. Cards already in a slab are not candidates,
+and neither are manually valued ones, since a price somebody typed in is not a
+market to arbitrage against.
+
+**The fees are estimates, not quotes.** Grading companies change tiers and
+pricing regularly and none of them publish a feed, so `GRADING_FEE_TIERS`,
+`GRADING_POSTAGE`, `GRADING_BATCH` and `GRADING_MIN_UPLIFT` are all
+configurable and the page says on its face that they need checking. It also
+says what it does not model: the chance the card comes back lower than you
+hoped, and the months it spends away from you.
+
 ## Analytics
 
 Usage is logged server-side into the `events` table and shown at `/stats`.
