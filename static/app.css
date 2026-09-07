@@ -1060,3 +1060,11 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 .imp-price{font-size:13px}
 .imp-mkt{font-size:11px;color:var(--ink3)}
 .imp-filter{display:flex;gap:6px;flex-wrap:wrap}
+
+/* graded pricing provenance — a slab is not worth what a raw copy is, and the
+   page has to say which number it is showing */
+.gradebox{border:1px solid var(--line2);border-left:2px solid var(--up);
+  border-radius:var(--r);padding:11px 13px;margin-bottom:14px;background:var(--bg2)}
+.gradebox.warn{border-left-color:var(--acc)}
+.gradebox b{display:block;font-size:13px;font-weight:600;margin-bottom:3px}
+.gradebox span{display:block;font-size:12px;line-height:1.55;color:var(--ink2)}

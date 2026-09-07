@@ -290,6 +290,18 @@ CREATE TABLE IF NOT EXISTS import_rows (
   card_id TEXT, set_id TEXT, confidence TEXT, note TEXT,
   skip BOOLEAN NOT NULL DEFAULT false);
 CREATE INDEX IF NOT EXISTS import_rows_job ON import_rows (job_id, n);
+
+-- Graded prices, shared across users exactly like `prices`: one lookup per
+-- (card, grade) per refresh serves everybody. Kept in its own table rather
+-- than as rows in `prices` because the cadence, the source and the confidence
+-- are all different — comps are sparse, so `samples` decides whether a number
+-- is trustworthy enough to show.
+CREATE TABLE IF NOT EXISTS graded_prices (
+  card_id TEXT, grade TEXT, day DATE,
+  gbp REAL, low REAL, high REAL, samples INTEGER NOT NULL DEFAULT 0,
+  source TEXT, fetched TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (card_id, grade, day));
+CREATE INDEX IF NOT EXISTS graded_card ON graded_prices (card_id, grade, day DESC);
 """
 
 
@@ -323,6 +335,9 @@ with raw_db() as c:
     for col, typ in (("condition", "TEXT"), ("finish", "TEXT"),
                      ("region", "TEXT"), ("variant", "TEXT")):
         c.execute(f"ALTER TABLE holdings ADD COLUMN IF NOT EXISTS {col} {typ}")
+    # A graded sale is the only price signal nobody else has. Recording the
+    # grade on the sale turns the sold log into a second source.
+    c.execute("ALTER TABLE sales ADD COLUMN IF NOT EXISTS grade TEXT")
 
 # ------------------------------------------------------------------------- auth
 
@@ -479,6 +494,215 @@ def refresh_price(card_id, force=False, conn=None):
         c.commit()
     return gbp
 
+# ------------------------------------------------------------ graded pricing
+#
+# price_from() returns one raw market price. A PSA 10 routinely trades at
+# several multiples of raw, so a graded collection priced from it is
+# systematically undervalued — a GBP44 Ditto V showed as roughly GBP1.
+#
+# There is no free graded feed. TCG Price Lookup's free tier is TCGplayer raw
+# only; graded needs their paid Trader plan. The one genuinely free route is
+# eBay *sold* comps, where the grade is in the listing title and can be parsed
+# out. That is what this does.
+#
+# Two properties matter more than coverage here. Comps are sparse, so a median
+# over two sales is noise and is not shown; and if the source is unreachable
+# the card falls back to raw and says so, rather than inventing a number.
+
+# The graders whose slabs actually turn up in a UK collection. Used both to
+# read a condition field on import and to read a grade out of a listing title.
+GRADERS = ("PSA", "BGS", "CGC", "SGC", "ACE", "TAG")
+_GRADE_RE = re.compile(
+    r"\b(" + "|".join(GRADERS) + r")\s*\.?\s*(10|[0-9](?:\.5)?)\b", re.I)
+
+GRADED_API = os.environ.get("GRADED_API", "https://tcgapi.net/v1")
+GRADED_API_KEY = os.environ.get("GRADED_API_KEY", "")
+GRADED_MIN_SAMPLES = int(os.environ.get("GRADED_MIN_SAMPLES", "3"))
+GRADED_TTL_DAYS = int(os.environ.get("GRADED_TTL_DAYS", "7"))
+
+# Titles are free text written by sellers: "PSA 10 GEM MINT", "psa10",
+# "BGS 9.5 (Black Label)", "CGC 8.5". Whitespace between company and number is
+# optional and the qualifier that follows is ignored.
+_TITLE_GRADE_RE = re.compile(
+    r"\b(" + "|".join(GRADERS) + r")\s*-?\s*(10|[0-9](?:\.5)?)\b", re.I)
+
+
+def grade_from_title(title):
+    """Pull 'PSA 10' out of an eBay listing title, or None if it is raw."""
+    if not title:
+        return None
+    m = _TITLE_GRADE_RE.search(str(title))
+    if not m:
+        return None
+    num = m.group(2)
+    if num.endswith(".0"):
+        num = num[:-2]
+    return f"{m.group(1).upper()} {num}"
+
+
+def _median(xs):
+    xs = sorted(xs)
+    n = len(xs)
+    if not n:
+        return None
+    mid = n // 2
+    return xs[mid] if n % 2 else (xs[mid - 1] + xs[mid]) / 2
+
+
+def fetch_comps(card, timeout=12):
+    """Sold comps for one card. Returns a list of {title, price, currency}.
+
+    The response shape is read defensively: this is a third-party feed that has
+    already changed hands once, and a schema change should degrade to "no
+    graded price" rather than a traceback on the portfolio page.
+    """
+    name = (card or {}).get("name")
+    if not name or not GRADED_API:
+        return []
+    q = " ".join(x for x in (name, card.get("set_name"), card.get("local_id")) if x)
+    params = {"q": q, "limit": 60}
+    if GRADED_API_KEY:
+        params["key"] = GRADED_API_KEY
+    try:
+        r = requests.get(f"{GRADED_API}/comps", params=params, timeout=timeout)
+        if r.status_code != 200:
+            return []
+        data = r.json()
+    except (requests.RequestException, ValueError):
+        return []
+
+    if isinstance(data, dict):
+        for key in ("comps", "results", "sales", "data", "items"):
+            if isinstance(data.get(key), list):
+                data = data[key]
+                break
+        else:
+            return []
+    if not isinstance(data, list):
+        return []
+
+    out = []
+    for it in data:
+        if not isinstance(it, dict):
+            continue
+        title = it.get("title") or it.get("name") or it.get("listing")
+        price = None
+        for key in ("price", "sold_price", "soldPrice", "amount", "value", "total"):
+            v = it.get(key)
+            if isinstance(v, dict):
+                v = v.get("value") or v.get("amount")
+            if isinstance(v, (int, float)) and v > 0:
+                price = float(v); break
+            if isinstance(v, str):
+                try:
+                    price = float(re.sub(r"[^\d.]", "", v)); break
+                except ValueError:
+                    pass
+        if title and price:
+            out.append({"title": title, "price": price,
+                        "currency": (it.get("currency") or "USD").upper()})
+    return out
+
+
+def _to_gbp(amount, currency):
+    if currency == "GBP":
+        return amount
+    if currency == "EUR":
+        return amount * EUR_GBP
+    return amount * USD_GBP          # comps are overwhelmingly USD
+
+
+def crowd_graded_price(card_id, grade, conn=None):
+    """Graded sales our own users recorded. Sparse at first, but nobody else has it."""
+    c = conn or db()
+    rows = c.execute("""SELECT sold, qty FROM sales
+                        WHERE card_id=%s AND grade=%s AND sold > 0
+                          AND sold_on > CURRENT_DATE - INTERVAL '180 days'""",
+                     (card_id, grade)).fetchall()
+    vals = [r["sold"] / max(1, r["qty"] or 1) for r in rows]
+    if not vals:
+        return None
+    return {"gbp": round(_median(vals), 2), "samples": len(vals),
+            "low": round(min(vals), 2), "high": round(max(vals), 2),
+            "source": "sold-log"}
+
+
+def refresh_graded_price(card_id, grade, force=False, conn=None):
+    """Price one (card, grade) from comps, falling back to our own sold log.
+
+    Returns the stored row, or None when there is nothing trustworthy. Shared
+    across users: one refresh serves everyone holding that card at that grade.
+    """
+    c = conn or db()
+    today = date.today()
+    if not force:
+        row = c.execute("""SELECT * FROM graded_prices WHERE card_id=%s AND grade=%s
+                           ORDER BY day DESC LIMIT 1""", (card_id, grade)).fetchone()
+        if row and (today - row["day"]).days < GRADED_TTL_DAYS:
+            return row
+
+    card = c.execute("SELECT id,name,set_name,local_id FROM cards WHERE id=%s",
+                     (card_id,)).fetchone()
+    agg = None
+    if card:
+        vals = [_to_gbp(x["price"], x["currency"]) for x in fetch_comps(dict(card))
+                if grade_from_title(x["title"]) == grade]
+        if len(vals) >= GRADED_MIN_SAMPLES:
+            agg = {"gbp": round(_median(vals), 2), "samples": len(vals),
+                   "low": round(min(vals), 2), "high": round(max(vals), 2),
+                   "source": "ebay-comps"}
+    if agg is None:
+        agg = crowd_graded_price(card_id, grade, c)
+    if agg is None:
+        return None
+
+    c.execute("""INSERT INTO graded_prices (card_id,grade,day,gbp,low,high,samples,source,fetched)
+                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,now())
+                 ON CONFLICT (card_id,grade,day) DO UPDATE SET
+                   gbp=EXCLUDED.gbp, low=EXCLUDED.low, high=EXCLUDED.high,
+                   samples=EXCLUDED.samples, source=EXCLUDED.source, fetched=now()""",
+              (card_id, grade, today, agg["gbp"], agg["low"], agg["high"],
+               agg["samples"], agg["source"]))
+    if conn is None:
+        c.commit()
+    return c.execute("""SELECT * FROM graded_prices WHERE card_id=%s AND grade=%s
+                        AND day=%s""", (card_id, grade, today)).fetchone()
+
+
+def graded_price(card_id, grade, conn=None):
+    """Latest stored graded price, or None. Never fetches — read path only."""
+    if not grade:
+        return None
+    c = conn or db()
+    row = c.execute("""SELECT * FROM graded_prices WHERE card_id=%s AND grade=%s
+                       AND samples >= %s ORDER BY day DESC LIMIT 1""",
+                    (card_id, grade, GRADED_MIN_SAMPLES)).fetchone()
+    return dict(row) if row else None
+
+
+def refresh_graded_all(conn, limit=200):
+    """Weekly sweep of every (card, grade) anyone actually holds.
+
+    Weekly rather than daily: comps move slowly, the feed is rate-limited, and
+    CLAUDE.md's plan is graded weekly for free accounts and daily for paid.
+    """
+    # Ordered so a truncated sweep resumes predictably rather than re-rolling
+    # which cards get looked up.
+    rows = conn.execute("""SELECT DISTINCT card_id, grade FROM holdings
+                           WHERE grade <> '' AND grade IS NOT NULL
+                           ORDER BY card_id, grade LIMIT %s""", (limit,)).fetchall()
+    n = 0
+    for r in rows:
+        try:
+            if refresh_graded_price(r["card_id"], r["grade"], conn=conn):
+                n += 1
+        except Exception:
+            pass                     # one bad card must not stop the sweep
+        conn.commit()
+        time.sleep(0.25)
+    return n
+
+
 # -------------------------------------------------------------------- portfolio
 
 
@@ -494,7 +718,22 @@ def holdings_with_prices(user_id, conn=None):
         hist = c.execute("SELECT day, gbp FROM prices WHERE card_id=%s ORDER BY day DESC LIMIT 31",
                          (r["id"],)).fetchall()
         hist = [{"day": h["day"].isoformat(), "gbp": h["gbp"]} for h in hist]
-        latest = d["manual_gbp"] if d["manual_gbp"] is not None else (hist[0]["gbp"] if hist else None)
+        raw = hist[0]["gbp"] if hist else None
+
+        # A graded card is not worth what a raw one is. price_basis says which
+        # number this is, so the UI can stop claiming a PSA 10 is worth raw
+        # money and can show when it is falling back.
+        g = graded_price(d["id"], d["grade"], c) if d["grade"] else None
+        if d["manual_gbp"] is not None:
+            latest, d["price_basis"] = d["manual_gbp"], "manual"
+        elif g:
+            latest, d["price_basis"] = g["gbp"], "graded"
+            d["graded"] = {"samples": g["samples"], "source": g["source"],
+                           "low": g["low"], "high": g["high"], "raw": raw}
+        elif d["grade"]:
+            latest, d["price_basis"] = raw, "raw-fallback"
+        else:
+            latest, d["price_basis"] = raw, "raw"
         d["price"] = latest
         d["value"] = (latest or 0) * d["qty"]
         d["history"] = list(reversed(hist))
@@ -506,9 +745,13 @@ def holdings_with_prices(user_id, conn=None):
                 if h["day"] <= target:
                     return h["gbp"]
             return None
-        d["chg1"] = pct(latest, ago(1)) if d["manual_gbp"] is None else None
-        d["chg7"] = pct(latest, ago(7)) if d["manual_gbp"] is None else None
-        d["chg30"] = pct(latest, ago(30)) if d["manual_gbp"] is None else None
+        # Only the raw series belongs to this number. A graded price moves on a
+        # different clock and a manual one does not move at all, so neither gets
+        # a change figure rather than being handed the raw card's.
+        movable = d["price_basis"] == "raw"
+        d["chg1"] = pct(latest, ago(1)) if movable else None
+        d["chg7"] = pct(latest, ago(7)) if movable else None
+        d["chg30"] = pct(latest, ago(30)) if movable else None
         with_images(d)
         out.append(d)
     out.sort(key=lambda x: -(x["value"] or 0))
@@ -1128,10 +1371,11 @@ def api_sales():
     if not row:
         return jsonify(error="Holding not found."), 404
     qty = max(1, min(int(d.get("qty") or 1), row["qty"]))
-    db().execute("""INSERT INTO sales (user_id,card_id,qty,sold,paid,sold_on,venue,note)
-                    VALUES (%s,%s,%s,%s,%s,COALESCE(%s,CURRENT_DATE),%s,%s)""",
+    db().execute("""INSERT INTO sales (user_id,card_id,qty,sold,paid,sold_on,venue,note,grade)
+                    VALUES (%s,%s,%s,%s,%s,COALESCE(%s,CURRENT_DATE),%s,%s,%s)""",
                  (uid(), row["card_id"], qty, float(d.get("sold") or 0),
-                  row["paid"], d.get("sold_on") or None, d.get("venue"), d.get("note")))
+                  row["paid"], d.get("sold_on") or None, d.get("venue"), d.get("note"),
+                  row["grade"] or None))
     if qty >= row["qty"]:
         db().execute("DELETE FROM holdings WHERE id=%s", (hid,))
     else:
@@ -1569,10 +1813,6 @@ NO_DATA_FOR = {
     "cn": "Chinese card — TCGdex has no Chinese data",
     "kr": "Korean card — TCGdex has no Korean data",
 }
-
-GRADERS = ("PSA", "BGS", "CGC", "SGC", "ACE", "TAG")
-_GRADE_RE = re.compile(
-    r"\b(" + "|".join(GRADERS) + r")\s*\.?\s*(10|[0-9](?:\.5)?)\b", re.I)
 
 # Everything before the slash, verbatim. Zero padding is significant: TCGdex
 # uses "072" for SV-era sets and "44" for older ones, so normalising either way
@@ -2340,6 +2580,7 @@ def refresh_all():
             time.sleep(0.2)
         c.commit()
         refresh_market(c)
+        refresh_graded_all(c)
         backfill_alt_images(c)
         fired = check_alerts(c)
         for u in c.execute("SELECT * FROM users").fetchall():

@@ -28,8 +28,12 @@ from werkzeug.security import generate_password_hash             # noqa: E402
 import app as holo                                               # noqa: E402
 
 # Every table app.py writes to, children before parents.
+# graded_prices and the import staging tables are listed explicitly: the first
+# has no user foreign key, so a cascade from users never reaches it and rows
+# leak into the next test.
 TABLES = ("events", "custom_items", "alerts", "watchlist", "sales", "snapshots",
-          "holdings", "prices", "set_cards", "cards", "users")
+          "import_rows", "import_jobs", "holdings", "graded_prices", "prices",
+          "set_cards", "cards", "users")
 
 
 @pytest.fixture(autouse=True)

@@ -130,8 +130,8 @@ function review(s) {
     `${good} of ${ROWS.length} matched a specific printing. ` +
     `Rows marked <b>Not found</b> are skipped — nothing is guessed for them.` +
     (graded ? `<br><b>${graded} graded card${graded > 1 ? 's' : ''}</b> will import with the ` +
-              `grade recorded but priced as raw. There is no free source of graded ` +
-              `prices yet, so treat those values as a floor.` : '');
+              `grade recorded. Graded prices come from sold comps and are filled in on ` +
+              `the next refresh; until then those show the raw price, marked as such.` : '');
 }
 
 function draw() {

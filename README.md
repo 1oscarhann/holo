@@ -153,14 +153,53 @@ the most important rule in the importer: silently pricing a £200 Chinese Cubone
 as a common English one looks confident and is completely wrong, which is worse
 than saying "not found". Any region without a TCGdex endpoint stops the same way.
 
-**Graded cards are still priced as raw.** `price_from()` returns one raw market
-price and there is no free source of graded prices — TCG Price Lookup's free tier
-is TCGplayer raw only, and `tcgapi.net`'s `/v1/comps` (eBay sold comps, grade
-parseable from the listing title) is the only genuinely free route. Until that
-exists, graded rows import with the grade recorded and the review step says
-plainly that they are priced as raw, rather than showing a wrong number quietly.
+**Graded cards are priced as graded** — see below.
 
 The test fixture is `tests/fixtures/tests-fixture-collectr.csv`.
+
+## Graded pricing
+
+`price_from()` returns one raw market price, so a slab was valued as if it were
+a raw copy: a £44 PSA 10 Ditto V showed as roughly £1.
+
+There is no free graded feed. TCG Price Lookup's free tier is TCGplayer raw
+only; graded needs their paid Trader plan. The one genuinely free route is eBay
+**sold comps**, where the grade is written in the listing title and can be
+parsed out — that is what `fetch_comps()` reads, from `GRADED_API`
+(`https://tcgapi.net/v1` by default, `GRADED_API_KEY` optional).
+
+Prices land in `graded_prices`, keyed `(card_id, grade, day)` and shared across
+users exactly like `prices` — one lookup per card per grade serves everybody
+holding it. It is a separate table because the cadence, the source and the
+confidence are all different from raw.
+
+Three rules do the real work:
+
+- **The median, not the mean.** eBay has silly listings; one £300 sale must not
+  move a £56 card.
+- **A thin sample is not a price.** Below `GRADED_MIN_SAMPLES` (3) nothing is
+  stored or read back. Two sales is a coincidence, not a market.
+- **An unreachable source falls back to raw and says so.** `price_basis` on
+  every holding is one of `manual`, `graded`, `raw`, or `raw-fallback`, and the
+  card page prints which — "Priced as PSA 10, median of 5 sold listings,
+  £40–£48" or "PSA 10 — priced as raw". A wrong number shown confidently is the
+  failure being avoided; a right number with a caveat is not.
+
+A graded holding gets **no 24h/7d/30d change**. The raw series is not its
+history, and borrowing it would be inventing movement.
+
+The sweep is weekly (`GRADED_TTL_DAYS`), runs inside the nightly refresh, and
+only looks up grades somebody actually holds. Weekly rather than daily because
+comps move slowly and the feed is rate-limited — and because the plan is graded
+weekly for free accounts, daily for paid.
+
+**The sold log is the second source.** `sales.grade` is recorded when a graded
+holding is sold, and `crowd_graded_price()` uses those when comps come back
+empty. Sparse to begin with, but it is data nobody else has.
+
+The response shape is read defensively — several wrappers, prices as strings or
+nested objects — because it is a third-party feed and a schema change should
+cost the graded price, not the portfolio page.
 
 ## Analytics
 
