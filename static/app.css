@@ -1,18 +1,25 @@
 :root{
-  /* Pure black, one acid accent, hairlines. Reads as a tool, not a brochure. */
-  --bg:#000; --bg2:#0d0d0d; --bg3:#161616; --line:#1e1e1e; --line2:#2a2a2a;
-  --ink:#fff; --ink2:#9b9b9b; --ink3:#5a5a5a;
-  --acc:#c8ff3d; --acc-ink:#0a0a0a;
-  --up:#c8ff3d; --down:#ff5d5d; --paper:#fff;
+  /* Cool charcoal and a desaturated steel blue. Reads as an instrument panel,
+     not a brochure. Deliberately low-chroma: a page of saturated card art is
+     the only colour that should shout, and an acid accent fought all of it.
+     Neutrals carry a blue cast so the accent sits in the same family. */
+  --bg:#0b0d10; --bg2:#12151a; --bg3:#1a1e25; --line:#1e232b; --line2:#2b323d;
+  --ink:#eef1f5; --ink2:#98a1ad; --ink3:#5b636f;
+  --acc:#8fb3d9; --acc-ink:#0a0d11;
+  --up:#6fb894; --down:#d4776a; --paper:#fff;
   --r:4px; --r2:6px;
-  --mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,monospace;
+  /* The figure face. Was JetBrains Mono — a *coding* face, with terminal
+     letter-spacing and slashed zeros, which made a portfolio total read like
+     stdout rather than money. Figures now come from the brand face; body
+     already sets font-feature-settings:"tnum", so columns still align. */
+  --fig:var(--sans);
   --pad:16px; --tab:60px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
 body{
   background:var(--bg); color:var(--ink);
-  font:16px/1.4 "Instrument Sans",system-ui,sans-serif;
+  font:16px/1.4 Archivo,system-ui,-apple-system,sans-serif;
   font-feature-settings:"tnum" 1,"ss01" 1;
   -webkit-font-smoothing:antialiased;
   padding-bottom:calc(var(--tab) + env(safe-area-inset-bottom));
@@ -22,7 +29,6 @@ a{color:inherit;text-decoration:none}
 button,input,select{font:inherit;color:inherit}
 .shell{max-width:560px;margin:0 auto;padding:0 var(--pad)}
 .num{font-variant-numeric:tabular-nums}
-
 /* --- hero ------------------------------------------------- */
 .hero{padding:34px 0 22px}
 .hero .who{color:var(--ink2);font-size:15px}
@@ -41,9 +47,9 @@ button,input,select{font:inherit;color:inherit}
   background:var(--bg2);font-size:14px;color:var(--ink2)
 }
 .chip b{font-weight:600;color:var(--ink)}
-.chip.up b{color:var(--up)} .chip.down b{color:var(--down)}
+.chip.up b{color:var(--up)}
+.chip.down b{color:var(--down)}
 .chip.flat b{color:var(--ink2)}
-
 /* --- chart ------------------------------------------------ */
 .chart{margin:8px 0 6px;position:relative}
 .chart canvas{width:100%;height:150px;display:block}
@@ -53,16 +59,15 @@ button,input,select{font:inherit;color:inherit}
   background:none;border:0;padding:6px 10px;border-radius:var(--r2);color:var(--ink3);font-size:14px;cursor:pointer
 }
 .ranges button.on{background:var(--bg2);color:var(--ink)}
-
 /* --- sections --------------------------------------------- */
 .sec{margin:0 0 30px}
 .sec h2{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;justify-content:space-between;align-items:baseline}
 .sec h2 a{color:var(--ink3);font-weight:400;font-size:14px}
 .figs{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .fig .k{color:var(--ink2);font-size:14px}
-.fig .v{font-size:22px;font-weight:600;letter-spacing:-.01em;margin-top:2px}
-.fig .v.up{color:var(--up)} .fig .v.down{color:var(--down)}
-
+.fig .v{font-size:22px;font-weight:600;letter-spacing:-.025em;margin-top:2px}
+.fig .v.up{color:var(--up)}
+.fig .v.down{color:var(--down)}
 /* rows: image + text + number */
 .row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
 .row:last-child{border-bottom:0}
@@ -74,12 +79,11 @@ button,input,select{font:inherit;color:inherit}
 .row .r{text-align:right;flex:none}
 .row .r .p{font-weight:600}
 .row .r .c{font-size:13.5px;color:var(--ink2)}
-.row .r .c.up{color:var(--up)} .row .r .c.down{color:var(--down)}
-
+.row .r .c.up{color:var(--up)}
+.row .r .c.down{color:var(--down)}
 /* share bar for sets */
 .bar{height:3px;background:var(--line);border-radius:var(--r);margin-top:6px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--ink2)}
-
 /* --- tabs ------------------------------------------------- */
 .tabs{
   position:fixed;left:0;right:0;bottom:0;height:calc(var(--tab) + env(safe-area-inset-bottom));
@@ -92,7 +96,6 @@ button,input,select{font:inherit;color:inherit}
 .tabs svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .tabs .plus,.tabs .plus.on{width:46px;height:46px;border-radius:50%;background:var(--paper);color:var(--bg);justify-content:center;transform:translateY(-4px)}
 .tabs .plus svg{stroke-width:2.2}
-
 /* --- forms ------------------------------------------------ */
 .field{margin-bottom:14px}
 .field label{display:block;font-size:14px;color:var(--ink2);margin-bottom:5px}
@@ -110,21 +113,18 @@ button,input,select{font:inherit;color:inherit}
 .btn[disabled]{opacity:.5}
 .err{color:var(--down);font-size:14px;margin:0 0 14px}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-
 /* --- auth ------------------------------------------------- */
 .auth{padding-top:18vh}
 .auth .brand{font-size:44px;font-weight:600;letter-spacing:-.03em;margin-bottom:6px}
 .auth .sub{color:var(--ink2);margin-bottom:34px}
 .auth .swap{margin-top:22px;color:var(--ink2);font-size:14.5px;text-align:center}
 .auth .swap a{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
-
 /* --- search ----------------------------------------------- */
 .search{position:sticky;top:0;background:var(--bg);padding:18px 0 12px;z-index:5}
 .search input{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r2);padding:14px 16px;font-size:17px;outline:none}
 .search input:focus{border-color:var(--ink2)}
 .results .row{cursor:pointer}
 .hint{color:var(--ink3);font-size:14.5px;padding:30px 0;text-align:center;line-height:1.5}
-
 /* --- sheet (add dialog) ----------------------------------- */
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-end;z-index:20}
 .sheet.open{display:flex}
@@ -138,7 +138,6 @@ button,input,select{font:inherit;color:inherit}
 .sheet .head .n{font-weight:600;font-size:18px}
 .sheet .head .m{color:var(--ink2);font-size:14px}
 .sheet .field input{background:var(--bg)}
-
 /* --- card detail ------------------------------------------ */
 .back{display:inline-block;color:var(--ink2);padding:18px 0 10px;font-size:15px}
 .cardhero{display:flex;gap:16px;align-items:flex-start;margin-bottom:22px}
@@ -148,7 +147,6 @@ button,input,select{font:inherit;color:inherit}
 .cardhero .p{font-size:30px;font-weight:600;margin-top:14px;letter-spacing:-.02em}
 .cardhero .p span{font-size:15px;font-weight:400;color:var(--ink2);margin-left:6px}
 .spark{height:90px;width:100%;display:block;margin:6px 0 24px}
-
 /* --- toast ------------------------------------------------ */
 #toast{
   position:fixed;left:50%;bottom:calc(var(--tab) + 18px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
@@ -156,16 +154,16 @@ button,input,select{font:inherit;color:inherit}
   opacity:0;pointer-events:none;transition:.2s;z-index:30;white-space:nowrap
 }
 #toast.show{opacity:1;transform:translateX(-50%)}
-
-.muted{color:var(--ink2)} .tiny{font-size:13.5px}
+.muted{color:var(--ink2)}
+.tiny{font-size:13.5px}
 .list-actions{display:flex;gap:10px;margin:14px 0 8px}
 :focus-visible{outline:2px solid var(--ink2);outline-offset:2px}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
-@media (min-width:700px){.hero .value{font-size:64px}}
-
+@media (prefers-reduced-motion:reduce){*{transition:none!important}
+}
+@media (min-width:700px){.hero .value{font-size:64px}
+}
 /* image that exhausted every fallback (shouldn't happen — placeholder is last) */
 img.img-dead { visibility: hidden; }
-
 /* ---- first-run state --------------------------------------------------- */
 .onboard{padding:60px 22px 40px;text-align:center}
 .onboard .ob-mark{font-size:34px;color:var(--ink3);margin-bottom:20px}
@@ -180,7 +178,6 @@ img.img-dead { visibility: hidden; }
   display:inline-flex;align-items:center;justify-content:center}
 .ob-tip{margin-top:34px;color:var(--ink3);font-size:13px}
 .ob-tip i{font-style:normal;color:var(--ink2)}
-
 /* ---- segmented control (Your cards / Market) --------------------------- */
 .seg{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--line);
   border-radius:var(--r2);padding:4px;margin:22px 0 4px}
@@ -188,7 +185,6 @@ img.img-dead { visibility: hidden; }
   font-weight:500;color:var(--ink2)}
 .seg a.on{background:var(--paper);color:var(--bg);font-weight:600}
 .tiny.muted,.sec h2 .tiny{color:var(--ink3);font-weight:400;font-size:12.5px}
-
 /* ---- set page + completion grid ---------------------------------------- */
 .setmast{padding:26px 0 4px}
 .setmast h1{font-size:27px;letter-spacing:-.4px;margin:4px 0 16px}
@@ -219,12 +215,10 @@ img.img-dead { visibility: hidden; }
 .sellbox label{flex:1;font-size:12.5px;color:var(--ink2);display:block}
 .sellbox input{width:100%;margin-top:5px;padding:10px;border-radius:var(--r2);
   border:1px solid var(--line);background:var(--bg)}
-
 /* ---- navigation progress bar ------------------------------------------- */
 #nprog{position:fixed;top:0;left:0;height:2px;width:0;background:var(--paper);
   z-index:99;transition:width .25s ease,opacity .2s;opacity:0;pointer-events:none}
 #nprog.on{width:78%;opacity:1;transition:width 1.1s cubic-bezier(.2,.8,.3,1),opacity .1s}
-
 /* ---- card detail: gameplay data ---------------------------------------- */
 .cardinfo .pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
 .pill{font-size:12px;padding:5px 10px;border-radius:var(--r2);background:var(--bg2);
@@ -245,7 +239,6 @@ img.img-dead { visibility: hidden; }
 .kv span{color:var(--ink2)}
 .kv b{font-weight:500}
 .dex{color:var(--ink2);font-size:13px;line-height:1.6;margin-top:14px;font-style:italic}
-
 /* ---- all sets ---------------------------------------------------------- */
 .setgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .setcard{padding:14px 12px;border:1px solid var(--line);border-radius:var(--r2);
@@ -265,13 +258,11 @@ img.img-dead { visibility: hidden; }
 .soon-i img{height:30px;width:auto;max-width:100%;object-fit:contain;margin-bottom:8px}
 .soon-i .n{font-size:12.5px;font-weight:600;line-height:1.25}
 .soon-i .m{font-size:11px;color:var(--ink3);margin-top:3px}
-
 /* ---- insights ---------------------------------------------------------- */
 .rbar{display:flex;height:9px;border-radius:var(--r);overflow:hidden;margin-bottom:16px;gap:2px}
 .rbar i,.dot{background:hsl(calc(200 + var(--i) * 38) 55% 62%)}
 .dot{width:9px;height:9px;border-radius:50%;flex:none}
 .row.slim{gap:11px}
-
 /* ---- compare ----------------------------------------------------------- */
 .cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px}
 .cmp-c{text-align:center}
@@ -286,14 +277,12 @@ img.img-dead { visibility: hidden; }
 .cmp-r b{font-weight:500}
 textarea{width:100%;padding:12px;border-radius:var(--r2);border:1px solid var(--line);
   background:var(--bg2);color:var(--ink);font:inherit;font-size:14px;margin-bottom:12px;resize:vertical}
-
 /* ---- pull to refresh --------------------------------------------------- */
 .ptr{position:fixed;top:-40px;left:50%;transform:translateX(-50%);z-index:80;
   width:32px;height:32px;border-radius:50%;background:var(--bg2);border:1px solid var(--line);
   display:flex;align-items:center;justify-content:center;color:var(--ink2);font-size:15px;
   transition:transform .22s ease;pointer-events:none}
 .ptr.ready{color:var(--ink);border-color:var(--paper)}
-
 /* ---- long-press action sheet ------------------------------------------- */
 .sheet-back{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:90;opacity:0;
   transition:opacity .2s;display:flex;align-items:flex-end;backdrop-filter:blur(2px)}
@@ -306,13 +295,13 @@ textarea{width:100%;padding:12px;border-radius:var(--r2);border:1px solid var(--
   font-size:15.5px;font-weight:500}
 .sheet button.danger{color:#e8603c}
 .sheet button.cancel{background:var(--paper);color:var(--bg);font-weight:600;margin-top:6px}
-
 /* ---- skeletons --------------------------------------------------------- */
 .skel{background:linear-gradient(90deg,var(--bg2) 25%,var(--line) 50%,var(--bg2) 75%);
   background-size:200% 100%;animation:shim 1.3s infinite;border-radius:var(--r);color:transparent!important}
-@keyframes shim{to{background-position:-200% 0}}
-@media (prefers-reduced-motion:reduce){.skel{animation:none}}
-
+@keyframes shim{to{background-position:-200% 0}
+}
+@media (prefers-reduced-motion:reduce){.skel{animation:none}
+}
 /* ---- beta banner + version --------------------------------------------- */
 .beta{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:8px;
   padding:9px 14px;font-size:12.5px;color:var(--ink2);background:var(--bg2);
@@ -330,13 +319,11 @@ textarea{width:100%;padding:12px;border-radius:var(--r2);border:1px solid var(--
 .ob-known b{color:var(--ink);font-weight:600}
 .ob-known a{color:var(--ink);text-decoration:underline}
 .verstamp{text-align:center;color:var(--ink3);font-size:11.5px;padding:22px 0 34px}
-
 /* ---- currency-prefixed inputs ------------------------------------------ */
 .money{position:relative}
 .money::before{content:'£';position:absolute;left:11px;top:50%;transform:translateY(-50%);
   color:var(--ink3);font-size:14px;pointer-events:none;z-index:1}
 .money input{padding-left:24px!important;width:100%}
-
 /* ---- beta stats -------------------------------------------------------- */
 .statgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px 10px;margin-top:6px}
 .statgrid b{display:block;font-size:22px;font-weight:600;line-height:1.1}
@@ -346,7 +333,6 @@ textarea{width:100%;padding:12px;border-radius:var(--r2);border:1px solid var(--
   height:100%;gap:5px}
 .bcol i{width:100%;background:var(--paper);border-radius:var(--r);min-height:2px;display:block}
 .bcol span{font-size:9.5px;color:var(--ink3)}
-
 /* ---- pushed-page header ------------------------------------------------ */
 .pagehead{display:flex;align-items:center;gap:10px;padding:18px 0 10px;margin-bottom:4px}
 .pagehead .back{width:34px;height:34px;margin-left:-8px;border-radius:50%;flex:none;
@@ -355,7 +341,6 @@ textarea{width:100%;padding:12px;border-radius:var(--r2);border:1px solid var(--
 .pagehead .back svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 .pagehead h1{font-size:20px;font-weight:600;letter-spacing:-.2px}
-
 /* ---- floating add button ----------------------------------------------- */
 .fab{position:fixed;right:18px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:55;
   width:54px;height:54px;border-radius:50%;background:var(--paper);color:var(--bg);
@@ -363,11 +348,9 @@ textarea{width:100%;padding:12px;border-radius:var(--r2);border:1px solid var(--
   box-shadow:0 6px 20px rgba(0,0,0,.45);transition:transform .14s}
 .fab svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}
 .fab:active{transform:scale(.92)}
-
 /* three tabs now, so let them breathe */
 nav.tabs{grid-template-columns:repeat(3,1fr)!important}
 nav.tabs a.plus{display:none}
-
 /* ---- section jump list ------------------------------------------------- */
 .jump{margin:8px 0 30px;border-top:1px solid var(--line)}
 .jump.top{margin:14px 0 6px;border-top:0}
@@ -380,7 +363,6 @@ nav.tabs a.plus{display:none}
 .jump a::after{content:'';position:absolute;right:6px;top:50%;width:7px;height:7px;
   border-right:1.8px solid var(--ink3);border-top:1.8px solid var(--ink3);
   transform:translateY(-50%) rotate(45deg)}
-
 /* ---- cards: art grid view ---------------------------------------------- */
 .list-actions{display:flex;gap:8px;align-items:center}
 .list-actions .btn{flex:1}
@@ -391,7 +373,6 @@ nav.tabs a.plus{display:none}
 .viewtog .i-list{display:none}
 .viewtog.is-grid .i-grid{display:none}
 .viewtog.is-grid .i-list{display:block}
-
 .gmeta{display:none}
 #list.grid-v{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;padding-top:6px}
 #list.grid-v .row{display:block;padding:0;border:0;position:relative;border-radius:var(--r2);
@@ -403,7 +384,6 @@ nav.tabs a.plus{display:none}
   background:linear-gradient(transparent,rgba(0,0,0,.88))}
 #list.grid-v .gmeta b{font-size:12.5px;font-weight:700}
 #list.grid-v .gmeta i{font-style:normal;font-size:10.5px;color:var(--ink2)}
-
 /* ---- by-set rows -------------------------------------------------------
    Rebuilt: the old markup mixed a flex row with block-laid children, which
    cropped every logo to a sliver and ran the name into the price.           */
@@ -424,7 +404,6 @@ nav.tabs a.plus{display:none}
 .setline .amt b{display:block;font-size:15px;font-weight:600}
 .setline .amt i{display:block;font-style:normal;font-size:11px;color:var(--ink3);margin-top:2px}
 .seeall{float:right;font-size:12px;color:var(--ink2);text-decoration:underline;font-weight:400}
-
 /* ---- rarity donut ------------------------------------------------------ */
 .donutwrap{position:relative;width:150px;margin:6px auto 20px}
 .donut{width:150px;height:150px;transform:rotate(-90deg)}
@@ -432,7 +411,6 @@ nav.tabs a.plus{display:none}
   align-items:center;justify-content:center;pointer-events:none}
 .donutmid b{font-size:26px;font-weight:600;line-height:1}
 .donutmid span{font-size:11px;color:var(--ink2);margin-top:2px}
-
 /* ---- global search entry ----------------------------------------------- */
 .gsearch{display:flex;align-items:center;gap:10px;margin:16px 0 4px;padding:13px 15px;
   border:1px solid var(--line);border-radius:var(--r2);background:var(--bg2);color:var(--ink3)}
@@ -440,63 +418,6 @@ nav.tabs a.plus{display:none}
   stroke-width:2;stroke-linecap:round}
 .gsearch span{font-size:15px}
 .gsearch:active{border-color:var(--ink3)}
-
-/* ==== landing page ====================================================== */
-body.landing{padding:0;max-width:none}
-.landing section,.landing header,.landing footer{max-width:660px;margin:0 auto;
-  padding-left:22px;padding-right:22px}
-.lnav{display:flex;align-items:center;gap:9px;padding-top:20px;padding-bottom:8px}
-.lnav .brand{font-size:22px;font-weight:700;letter-spacing:-.4px}
-.lnav .tag{font-size:10px;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink2);
-  border:1px solid var(--line);border-radius:var(--r2);padding:3px 8px}
-.lnav .lin{margin-left:auto;font-size:14px;color:var(--ink2)}
-
-.lhero{padding-top:34px;text-align:center;position:relative;overflow:hidden}
-.lhero::before{content:'';position:absolute;left:50%;top:-140px;width:640px;height:420px;
-  transform:translateX(-50%);pointer-events:none;filter:blur(60px);opacity:.5;
-  background:radial-gradient(45% 55% at 35% 50%,rgba(122,226,255,.35),transparent 70%),
-             radial-gradient(45% 55% at 65% 45%,rgba(201,166,255,.32),transparent 70%),
-             radial-gradient(40% 50% at 50% 70%,rgba(255,206,120,.22),transparent 70%)}
-.lhero h1{position:relative;font-size:38px;line-height:1.1;letter-spacing:-1.1px;
-  font-weight:700;margin-bottom:16px}
-.lhero p{position:relative;color:var(--ink2);font-size:16px;line-height:1.6;
-  max-width:30em;margin:0 auto 26px}
-.lcta{display:inline-block;background:var(--paper);color:var(--bg);font-weight:600;
-  font-size:16px;padding:15px 30px;border-radius:var(--r2);position:relative}
-.lcta:active{transform:scale(.98)}
-.lnote{display:block;margin-top:12px;font-size:12.5px;color:var(--ink3);position:relative}
-.lnote a{color:var(--ink2);text-decoration:underline}
-
-.lshots{display:flex;justify-content:center;align-items:flex-end;gap:12px;
-  margin-top:46px;position:relative}
-.lshots img{width:31%;border-radius:var(--r2);border:1px solid var(--line);
-  box-shadow:0 18px 44px rgba(0,0,0,.6);display:block}
-.lshots img.mid{width:37%;z-index:2;margin-bottom:16px}
-
-.lfeat{display:grid;gap:2px;padding-top:56px}
-.lfeat div{padding:18px 0;border-bottom:1px solid var(--line)}
-.lfeat b{display:block;font-size:16px;font-weight:600;margin-bottom:5px}
-.lfeat span{display:block;color:var(--ink2);font-size:14px;line-height:1.6}
-
-.lmarket{padding-top:52px;display:grid;gap:26px;align-items:center}
-.lmarket img{width:62%;max-width:250px;margin:0 auto;display:block;border-radius:var(--r2);
-  border:1px solid var(--line);box-shadow:0 16px 40px rgba(0,0,0,.55)}
-.lmarket h2{font-size:24px;letter-spacing:-.5px;margin-bottom:10px}
-.lmarket p{color:var(--ink2);font-size:15px;line-height:1.65}
-
-.lend{padding-top:64px;text-align:center}
-.lend h2{font-size:27px;letter-spacing:-.6px;margin-bottom:10px}
-.lend p{color:var(--ink2);font-size:15px;margin-bottom:24px}
-.lfoot{padding-top:56px;padding-bottom:44px;display:grid;gap:10px}
-.lfoot span{color:var(--ink3);font-size:11.5px;line-height:1.55}
-
-@media (min-width:620px){
-  .lhero h1{font-size:46px}
-  .lfeat{grid-template-columns:1fr 1fr;gap:0 30px}
-  .lmarket{grid-template-columns:250px 1fr;gap:34px}
-  .lmarket img{margin:0}
-}
-
 /* ---- premium code + admin toggle --------------------------------------- */
 .prem{padding:16px;border:1px solid var(--line);border-radius:var(--r2);background:var(--bg2)}
 .prem b{display:block;font-size:15px;font-weight:600;margin-bottom:5px}
@@ -510,7 +431,6 @@ body.landing{padding:0;max-width:none}
 .pmtog{flex:none;background:none;border:0;font-size:17px;color:var(--ink3);padding:0 2px;
   margin-left:8px}
 .pmtog.on{color:var(--paper)}
-
 /* ---- camera scan ------------------------------------------------------- */
 .scanwrap{margin:6px 0 20px}
 .viewport{position:relative;aspect-ratio:3/4;border-radius:var(--r2);overflow:hidden;
@@ -535,7 +455,6 @@ body.landing{padding:0;max-width:none}
 .pickfile svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round}
 #cands .row .pick{width:auto;flex:none;padding:8px 14px;font-size:13.5px}
-
 /* ---- premium lock ------------------------------------------------------ */
 .locked{text-align:center;padding:60px 20px}
 .lk-badge{display:inline-block;font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;
@@ -552,7 +471,6 @@ body.landing{padding:0;max-width:none}
   stroke-linecap:round;stroke-linejoin:round}
 .scanlink b{display:block;font-size:14.5px;font-weight:600}
 .scanlink span{font-size:12.5px;color:var(--ink2)}
-
 /* ---- admin controls ---------------------------------------------------- */
 .adm{display:grid;gap:16px;margin-top:6px}
 .adm label{display:block;font-size:13px;font-weight:600}
@@ -569,7 +487,6 @@ body.landing{padding:0;max-width:none}
 .prembadge{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink2);
   border:1px solid var(--line);border-radius:var(--r2);padding:1px 6px;margin-left:5px;
   font-weight:500;vertical-align:1px}
-
 /* rainbow sheen — the band of colour that sweeps across the art */
 .holo-shine{position:absolute;inset:0;pointer-events:none;border-radius:var(--r2);
   opacity:0;transition:opacity .35s;mix-blend-mode:color-dodge;
@@ -581,38 +498,30 @@ body.landing{padding:0;max-width:none}
   background-position:calc(var(--mx) * 1.1) calc(var(--my) * 1.1);
   -webkit-mask-image:radial-gradient(70% 60% at var(--mx) var(--my),#000 5%,rgba(0,0,0,.35) 50%,transparent 78%);
           mask-image:radial-gradient(70% 60% at var(--mx) var(--my),#000 5%,rgba(0,0,0,.35) 50%,transparent 78%)}
-
 /* specular highlight — the bright spot where the light hits */
 .holo-glare{position:absolute;inset:0;pointer-events:none;border-radius:var(--r2);
   opacity:0;transition:opacity .35s;mix-blend-mode:overlay;
   background:radial-gradient(28% 24% at var(--mx) var(--my),
     rgba(255,255,255,.75),rgba(255,255,255,.16) 45%,transparent 72%)}
-
 .holocard.lit .holo-shine,.holocard.lit .holo-glare{opacity:1}
 .holo-t1 .holo-shine{opacity:0;filter:saturate(.55)}
 .holo-t1.lit .holo-shine{opacity:.4}
 .holo-t2.lit .holo-shine{opacity:.72}
 .holo-t3.lit .holo-shine{opacity:1}
-
 /* glitter for the top tier only — real secret rares have it, commons don't */
 .holo-t3 .holo-shine::after{content:'';position:absolute;inset:0;
   background:repeating-conic-gradient(from 0deg at 50% 50%,
     rgba(255,255,255,.5) 0deg 1deg, transparent 1deg 4deg);
   background-size:9px 9px;mix-blend-mode:overlay;opacity:.5}
-
 .holocard.matte{transform:none}
 @media (prefers-reduced-motion:reduce){
   .holocard{transform:none;transition:none}
-  .holo-shine,.holo-glare{display:none}
+.holo-shine,.holo-glare{display:none}
 }
-
-
 /* ==== revamp: type ======================================================= */
 .num,.value,.hero .value,.c.num,.p.num,.statgrid b,.setstats b,.figs .v,.cmp-c .v,
-.gmeta b,.amt b,.donutmid b{font-family:var(--mono);font-weight:500;letter-spacing:-.02em}
+.gmeta b,.amt b,.donutmid b{font-family:var(--fig);font-weight:500;letter-spacing:-.02em}
 h1,h2,.n{letter-spacing:-.01em}
-
-
 /* ==== revamp: core surfaces ============================================== */
 body{background:var(--bg)}
 .shell{padding:0 var(--pad)}
@@ -626,20 +535,24 @@ body{background:var(--bg)}
 .row .m{font-size:12px;color:var(--ink2);margin-top:2px}
 .row .r .c{font-size:15px}
 .row .r .p{font-size:12px}
-.up{color:var(--up)}.down{color:var(--down)}
-
+.up{color:var(--up)}
+.down{color:var(--down)}
 /* hero */
 .hero{padding:26px 0 8px;position:relative;overflow:visible}
 .hero .who{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
-.hero .value{font-size:46px;line-height:1;margin:8px 0 14px;font-weight:500;
+/* 500 and -.02em were tuned for a monospace face, which carries its own weight
+   through fixed advance widths. A proportional face at 46px needs more of both
+   to hold the same presence. */
+.hero .value{font-size:46px;line-height:1;margin:8px 0 14px;font-weight:600;
+  letter-spacing:-.038em;
   background:none;-webkit-text-fill-color:currentColor;color:var(--ink)}
 .hero .value small{font-size:24px;color:var(--ink3);margin-right:2px;vertical-align:8px}
 .chips{display:flex;gap:6px}
 .chip{border:1px solid var(--line2);background:transparent;border-radius:var(--r);
   padding:6px 9px;font-size:12px;color:var(--ink2)}
-.chip b{font-family:var(--mono);font-weight:500;margin-left:5px;color:var(--ink)}
-.chip.up b{color:var(--up)}.chip.down b{color:var(--down)}
-
+.chip b{font-family:var(--fig);font-weight:500;margin-left:5px;color:var(--ink)}
+.chip.up b{color:var(--up)}
+.chip.down b{color:var(--down)}
 /* top holdings strip — replaces the fan */
 .holdstrip{display:flex;gap:8px;overflow-x:auto;margin:0 calc(var(--pad) * -1);
   padding:14px var(--pad) 4px var(--pad);scrollbar-width:none;scroll-snap-type:x mandatory;
@@ -647,10 +560,9 @@ body{background:var(--bg)}
 .holdstrip::-webkit-scrollbar{display:none}
 .holdstrip a{flex:none;width:112px;scroll-snap-align:start}
 .holdstrip img{width:100%;border-radius:var(--r);display:block;background:var(--bg2)}
-.holdstrip b{display:block;font-family:var(--mono);font-size:12.5px;margin-top:6px;font-weight:500}
+.holdstrip b{display:block;font-family:var(--fig);font-size:12.5px;margin-top:6px;font-weight:500}
 .holdstrip span{display:block;font-size:11px;color:var(--ink2);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
-
 /* buttons */
 .btn{background:var(--acc);color:var(--acc-ink);border:0;border-radius:var(--r);
   font-weight:600;font-size:14px;padding:13px;letter-spacing:.01em}
@@ -659,7 +571,6 @@ body{background:var(--bg)}
 .fab{background:var(--acc);color:var(--acc-ink);box-shadow:none;border-radius:var(--r2);
   width:50px;height:50px}
 .fab svg{stroke-width:2.6}
-
 /* bottom nav */
 nav.tabs{background:var(--bg);border-top:1px solid var(--line);height:var(--tab)}
 nav.tabs a{color:var(--ink3);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
@@ -668,7 +579,6 @@ nav.tabs a.on{color:var(--ink)}
 nav.tabs a.on::before{content:'';position:absolute;top:-1px;left:22%;right:22%;height:2px;
   background:var(--acc)}
 nav.tabs svg{stroke-width:1.6}
-
 /* page header + jump list */
 .pagehead h1{font-size:22px;font-weight:600;letter-spacing:-.02em}
 .jump{border-top:1px solid var(--line)}
@@ -677,21 +587,18 @@ nav.tabs svg{stroke-width:1.6}
 .jump b{font-size:14.5px;font-weight:500}
 .jump span{font-size:12px}
 .jump a::after{border-color:var(--ink3)}
-
 /* inputs */
 input,textarea,select{background:var(--bg2);border:1px solid var(--line2);color:var(--ink);
   border-radius:var(--r);font:inherit}
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 .search input{border-radius:var(--r);padding:12px 14px}
 .gsearch{border-radius:var(--r);background:var(--bg2);border-color:var(--line2);color:var(--ink3)}
-
 /* segmented + toggles */
 .seg{background:var(--bg2);border-color:var(--line);border-radius:var(--r);padding:3px}
 .seg a{border-radius:var(--r);font-size:13px}
 .seg a.on{background:var(--ink);color:var(--bg)}
 .viewtog{border-radius:var(--r);background:var(--bg2)}
 .viewtog.is-grid{color:var(--acc);border-color:var(--acc)}
-
 /* card detail: art shown plainly, large, centred */
 .art-wrap{position:static;padding:22px 0 14px;margin:0;overflow:visible}
 .art-wrap::after,.art-bg{display:none}
@@ -700,29 +607,27 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 .holocard img{border-radius:var(--r2)}
 .holo-shine,.holo-glare{display:none!important}
 .cardinfo .pill{border-radius:var(--r);background:var(--bg2);border-color:var(--line);font-size:11.5px}
-.atk .dmg{font-family:var(--mono)}
-.kv b{font-family:var(--mono);font-size:13px}
-
+.atk .dmg{font-family:var(--fig)}
+.kv b{font-family:var(--fig);font-size:13px}
 /* set completion: missing cards visible in grey, not near-black */
 .grid{gap:6px}
 .cell{border-radius:var(--r);background:var(--bg2)}
 .cell.miss img{filter:grayscale(1) brightness(.62) contrast(.9)}
 .cell.miss{opacity:1}
 .cell.have{outline:2px solid var(--acc);outline-offset:-2px;box-shadow:none}
-.cell .no{font-family:var(--mono);font-size:9.5px;background:linear-gradient(transparent,rgba(0,0,0,.85))}
+.cell .no{font-family:var(--fig);font-size:9.5px;background:linear-gradient(transparent,rgba(0,0,0,.85))}
 .cell.have .no{color:var(--acc)}
 .setmast h1{font-size:26px;font-weight:600;letter-spacing:-.02em}
 .setstats b{font-size:22px}
-.bar{height:3px;background:var(--bg3)}.bar i{background:var(--acc)}
+.bar{height:3px;background:var(--bg3)}
+.bar i{background:var(--acc)}
 .setline{padding:12px 0}
 .setline .logo{background:var(--bg2);border-radius:var(--r)}
 .setline .pbar i{background:var(--acc)}
-
 /* cards grid */
 #list.grid-v{gap:6px}
 #list.grid-v .row{border-radius:var(--r);border:0}
 #list.grid-v .gmeta{background:linear-gradient(transparent,rgba(0,0,0,.9))}
-
 /* market, sets, insights, stats */
 .spark{opacity:1}
 .setcard{border-radius:var(--r);background:var(--bg2);border-color:var(--line)}
@@ -732,7 +637,6 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 .statgrid b{font-size:24px}
 .bcol i{background:var(--acc)}
 .donut circle{stroke:var(--acc)}
-
 /* beta banner + misc chrome */
 .beta{background:var(--bg2);border-bottom:1px solid var(--line);font-size:12px}
 .beta b{color:var(--acc)}
@@ -741,24 +645,461 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 .sheet button{border-radius:var(--r);background:var(--bg2)}
 .sheet button.cancel{background:var(--acc);color:var(--acc-ink)}
 .toast,#toast{background:var(--ink);color:var(--bg);border-radius:var(--r);font-weight:500}
-
 /* onboarding */
 .onboard .btn.primary{background:var(--acc);color:var(--acc-ink);border-radius:var(--r)}
-.ob-badge,.lk-badge,.lnav .tag{border-radius:var(--r);color:var(--acc);border-color:var(--acc)}
+.ob-badge,.lk-badge{border-radius:var(--r);color:var(--acc);border-color:var(--acc)}
 .ob-steps b{background:var(--bg3);border-color:var(--line2)}
 .ob-known{border-radius:var(--r);background:var(--bg2)}
-
 /* landing */
-.lhero::before{display:none}
-.lhero h1{font-weight:600}
-.lcta{background:var(--acc);color:var(--acc-ink);border-radius:var(--r);font-weight:600}
-.lshots img,.lmarket img{border-radius:var(--r2);border-color:var(--line);box-shadow:none}
-.lfeat b{font-weight:500}
 .prem,.sellbox,.adm{border-radius:var(--r);background:var(--bg2)}
-.prem.on{border-color:var(--acc)}.prem.on b::before{color:var(--acc)}
+.prem.on{border-color:var(--acc)}
+.prem.on b::before{color:var(--acc)}
 .prembadge{color:var(--acc);border-color:var(--acc);border-radius:var(--r)}
 .scanlink{border-radius:var(--r);background:var(--bg2)}
 .viewport{border-radius:var(--r2)}
 .shutter{background:var(--acc);box-shadow:0 0 0 2px var(--acc)}
 .money::before{color:var(--ink3)}
-.verstamp{font-family:var(--mono);font-size:11px}
+.verstamp{font-family:var(--fig);font-size:11px}
+/* ==== portfolio: the graph is the centrepiece ============================ */
+/* The chart used to be 150px tall, wedged between the card strip above it and
+   its own range buttons below. It is the reason the tab exists, so it now gets
+   the height and the quiet around it to read as the main object on the page. */
+.graph{margin:6px 0 4px}
+/* The strip above the canvas is reserved, not overlaid: a read-out drawn on top
+   of the line is unreadable exactly where the line is interesting. */
+.chart{margin:0;position:relative;padding-top:38px}
+.chart canvas{width:100%;height:232px;display:block}
+.chart .empty{font-size:13px}
+/* Idle it shows the visible window's move; scrubbing it follows the finger. */
+.chart-read{position:absolute;top:0;left:0;pointer-events:none;
+  display:flex;flex-direction:column;gap:1px;transition:left .06s linear}
+.chart-read b{font-family:var(--fig);font-size:16px;font-weight:600;color:var(--ink);
+  letter-spacing:-.028em}
+.chart-read b.up{color:var(--up)}
+.chart-read b.down{color:var(--down)}
+.chart-read i{font-style:normal;font-family:var(--fig);font-size:11px;color:var(--ink3);
+  letter-spacing:.02em}
+.chart-read i.up{color:var(--up)}
+.chart-read i.down{color:var(--down)}
+/* the range tabs, as their own control rather than four loose buttons */
+.graph-foot{display:flex;align-items:center;gap:10px;margin:14px 0 4px}
+.ranges{display:flex;gap:2px;padding:3px;background:var(--bg2);
+  border:1px solid var(--line);border-radius:var(--r);flex:1}
+.ranges button{flex:1;background:transparent;border:0;border-radius:var(--r);
+  padding:7px 0;font-family:var(--fig);font-size:12px;font-weight:500;
+  letter-spacing:.02em;color:var(--ink3);cursor:pointer;transition:color .12s}
+.ranges button:hover{color:var(--ink2)}
+.ranges button.on{background:var(--acc);color:var(--acc-ink)}
+.sharebtn{flex:none;background:transparent;border:1px solid var(--line2);
+  border-radius:var(--r);color:var(--ink2);font-size:12px;font-weight:500;
+  letter-spacing:.04em;text-transform:uppercase;padding:9px 14px;cursor:pointer}
+.sharebtn:hover{color:var(--ink);border-color:var(--ink3)}
+/* ==== portfolio: top five, prime position ================================ */
+/* Below the graph, above the numbers. The best card is shown large; the other
+   four sit beside it. Art stays plain — object-fit:contain, never cropped,
+   nothing laid over the top of it. */
+.topfive{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 10px;
+  align-items:start}
+.topfive .tf{min-width:0;display:block}
+/* The featured card spans two rows. Rather than stretching or cropping its art
+   to fill that height, the art keeps its true aspect and the caption is pushed
+   to the bottom of the column, so it lines up with the captions beside it. */
+.topfive .tf:first-child{grid-column:span 2;grid-row:span 2;align-self:stretch;
+  display:flex;flex-direction:column}
+.topfive .tf:first-child img{flex:none}
+.topfive .tf:first-child b{margin-top:auto;padding-top:11px}
+.topfive img{width:100%;aspect-ratio:245/342;object-fit:contain;display:block;
+  background:var(--bg2);border-radius:var(--r)}
+.topfive b{display:block;font-size:12.5px;margin-top:8px;color:var(--ink)}
+.topfive .nm{display:block;font-size:11.5px;color:var(--ink2);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topfive .mv{display:block;font-family:var(--fig);font-size:11px;color:var(--ink3);
+  margin-top:2px;letter-spacing:-.01em}
+.topfive .mv.up{color:var(--up)}
+.topfive .mv.down{color:var(--down)}
+.topfive .tf:first-child b{font-size:19px;font-weight:600;letter-spacing:-.03em}
+.topfive .tf:first-child .nm{font-size:14px;color:var(--ink);margin-top:3px}
+.topfive .tf:first-child .mv{font-size:12px;margin-top:3px}
+@media (min-width:560px){
+  .chart canvas{height:280px}
+.topfive{gap:16px 12px}
+.topfive .tf:first-child b{font-size:22px}
+}
+
+
+/* =========================================================================
+   v0.17 — type system
+   Three voices, not one. A display serif for anything that speaks, the sans
+   for anything that labels, mono for anything that counts. The serif is the
+   point: it is what stops the app reading as a generated template, and it
+   costs nothing but a font file.
+   ========================================================================= */
+:root{
+  /* One family, not three. Archivo is a sturdy grotesque with enough
+     personality to carry a headline on weight alone, so hierarchy comes from
+     size and weight rather than from switching typeface — which is what made
+     the serif read as decoration. Numerals stay mono. */
+  --sans:Archivo,system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  --display:var(--sans);
+  /* Foil, kept cool so it sits inside the palette instead of on top of it.
+     Only ever on type, never over card art — the art is the product. */
+  --foil:linear-gradient(100deg,#eef1f5 0%,#a9c4e6 26%,#c9b8ee 48%,
+                                #9fd8e8 72%,#eef1f5 100%);
+}
+body{font-family:var(--sans)}
+
+/* the wordmark carries the foil; nothing else does */
+.holo{background:var(--foil);-webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent}
+
+/* =========================================================================
+   v0.17 — landing
+   Was: centred stack, three phones in a row, six identical feature boxes.
+   That shape is the template every generated site ships with. This is
+   left-aligned and editorial, it leads with the thing no competitor says
+   (priced in pounds, from Cardmarket), and it gives the three features that
+   sell the product room while keeping the other ten in a compact list.
+   ========================================================================= */
+body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
+  font-size:16px;line-height:1.5}
+.landing section,.landing header,.landing footer{
+  max-width:1080px;margin:0 auto;padding-left:22px;padding-right:22px}
+
+/* nav */
+.lnav{display:flex;align-items:center;gap:12px;padding-top:20px;padding-bottom:20px}
+.lbrand{display:flex;align-items:baseline;gap:9px;font-size:23px;font-weight:700;
+  letter-spacing:-.035em}
+.lbrand i{font-family:var(--sans);font-style:normal;font-size:9.5px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);
+  border:1px solid var(--line2);border-radius:2px;padding:2px 5px}
+.lnav .lin{margin-left:auto;font-size:14px;color:var(--ink2);
+  border-bottom:1px solid var(--line2);padding-bottom:2px}
+.lnav .lin:hover{color:var(--ink);border-color:var(--acc)}
+
+/* hero */
+.lhero{padding-top:48px;padding-bottom:44px;max-width:1080px}
+.lkick{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--acc);margin-bottom:20px}
+/* Archivo carries a headline on weight, so the emphasis that used to be an
+   italic serif is now the accent on the half of the sentence that is the
+   actual pitch. */
+.lhero h1{font-weight:700;font-size:clamp(35px,9.1vw,72px);line-height:1.03;
+  letter-spacing:-.042em;margin-bottom:22px;max-width:15ch}
+.lhero h1 em{font-style:normal;color:var(--acc)}
+.lsub{font-size:clamp(16px,4.2vw,19px);line-height:1.55;color:var(--ink2);
+  max-width:46ch;margin-bottom:30px}
+.lact{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px}
+.lcta{display:inline-block;background:var(--acc);color:var(--acc-ink);
+  font-weight:600;font-size:14.5px;letter-spacing:-.005em;padding:13px 22px;
+  border-radius:var(--r);transition:transform .12s ease,filter .12s ease}
+.lcta:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.lalt{font-size:14.5px;color:var(--ink2);border-bottom:1px solid var(--line2);
+  padding-bottom:2px}
+.lalt:hover{color:var(--ink);border-color:var(--ink3)}
+.lnote{font-size:12.5px;color:var(--ink3);margin-top:16px}
+.lnote a{color:var(--ink2);border-bottom:1px solid var(--line2)}
+
+/* the three facts that are the actual pitch */
+.lfacts{display:grid;grid-template-columns:1fr;gap:0;
+  border-top:1px solid var(--line);margin-top:8px}
+.lfacts div{display:flex;align-items:baseline;gap:16px;padding:18px 0;
+  border-bottom:1px solid var(--line)}
+.lfacts b{font-family:var(--fig);font-size:21px;font-weight:500;color:var(--acc);
+  letter-spacing:-.03em;flex:none;min-width:4.4em}
+.lfacts span{font-size:14px;color:var(--ink2);line-height:1.45}
+
+/* the three features that carry the product */
+/* These are built from the app's own type, colour and spacing rather than
+   screenshotted. Three reasons: the PNGs were showing the pre-0.16 design
+   months after it was replaced, a marketing page that drifts from the product
+   is worse than none, and live markup stays sharp at any density. */
+.lcut{padding-top:60px;display:grid;gap:22px;align-items:center}
+.lcut figure{margin:0;position:relative}
+.spec{border:1px solid var(--line);border-radius:10px;background:var(--bg2);
+  padding:18px 16px 16px}
+.sp-lab{font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink3);display:flex;justify-content:space-between;align-items:baseline}
+.sp-lab em{font-style:normal;letter-spacing:.06em;color:var(--ink3)}
+.sp-val{font-family:var(--fig);font-size:34px;font-weight:500;letter-spacing:-.035em;
+  margin:12px 0 12px;line-height:1}
+.sp-val small{font-size:19px;color:var(--ink3);margin-right:2px;vertical-align:5px}
+.sp-chips{display:flex;gap:6px;flex-wrap:wrap}
+.sp-chips span{border:1px solid var(--line2);border-radius:var(--r);padding:5px 8px;
+  font-size:11px;color:var(--ink2)}
+.sp-chips b{font-family:var(--fig);font-weight:500;color:var(--up);margin-left:4px}
+.sp-chart{width:100%;height:96px;display:block;margin:16px 0 12px}
+.sp-line{fill:none;stroke:var(--acc);stroke-width:2;vector-effect:non-scaling-stroke;
+  stroke-linejoin:round}
+.sp-fill{fill:var(--acc);opacity:.11;stroke:none}
+.sp-tabs{display:flex;gap:2px;padding:3px;background:var(--bg3);
+  border:1px solid var(--line);border-radius:var(--r)}
+.sp-tabs i{flex:1;text-align:center;font-style:normal;font-family:var(--fig);
+  font-size:11px;padding:6px 0;color:var(--ink3);border-radius:var(--r)}
+.sp-tabs i.on{background:var(--acc);color:var(--acc-ink)}
+
+/* set completion */
+.sp-setline{display:flex;align-items:baseline;gap:8px;margin:12px 0 14px}
+.sp-setline b{font-family:var(--fig);font-size:24px;font-weight:500;letter-spacing:-.03em}
+.sp-setline span{font-size:12px;color:var(--ink3)}
+.sp-setline i{flex:1;height:2px;background:var(--acc);margin-left:6px;
+  align-self:center;max-width:40%}
+.sp-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px}
+.sp-grid span{aspect-ratio:245/342;border-radius:2px;display:grid;place-items:center;
+  font-family:var(--fig);font-size:8px;letter-spacing:-.02em}
+.sp-grid .has{background:#1d2333;color:#8ea0c8;box-shadow:inset 0 0 0 1px #2a3348}
+.sp-grid .miss{background:#0d1014;color:#2f353e;box-shadow:inset 0 0 0 1px #191d24}
+
+/* market rows */
+.sp-rows{list-style:none;margin-top:8px}
+.sp-rows li{display:flex;align-items:baseline;gap:10px;padding:9px 0;
+  border-bottom:1px solid var(--line)}
+.sp-rows li:last-child{border-bottom:0}
+.sp-n{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp-rows b{font-family:var(--fig);font-size:12.5px;font-weight:500}
+.sp-rows i{font-family:var(--fig);font-style:normal;font-size:12.5px;color:var(--ink3);
+  min-width:5.4em;text-align:right}
+.leyebrow{font-size:10.5px;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink3);margin-bottom:12px}
+.lcut h2{font-weight:700;font-size:clamp(26px,6.2vw,38px);line-height:1.08;
+  letter-spacing:-.035em;margin-bottom:12px;max-width:18ch}
+.lcut p{font-size:15.5px;line-height:1.6;color:var(--ink2);max-width:44ch}
+
+/* everything else, kept but compact — no feature is dropped, they are ranked */
+.lgrid{padding-top:72px}
+.lgrid-h{font-weight:700;font-size:clamp(23px,5.4vw,30px);
+  letter-spacing:-.035em;margin-bottom:6px}
+.lgrid ul{list-style:none;display:grid;grid-template-columns:1fr;
+  border-top:1px solid var(--line)}
+.lgrid li{padding:14px 0;border-bottom:1px solid var(--line)}
+.lgrid b{display:block;font-size:14.5px;font-weight:600;margin-bottom:4px}
+.lgrid span{display:block;font-size:13.5px;line-height:1.5;color:var(--ink2);
+  max-width:52ch}
+
+/* close */
+.lend{padding-top:76px;padding-bottom:64px}
+.lend h2{font-weight:700;font-size:clamp(31px,8vw,52px);
+  letter-spacing:-.04em;line-height:1.02;margin-bottom:14px}
+.lend p{font-size:16px;color:var(--ink2);margin-bottom:26px;max-width:40ch}
+.lend .lnote{display:block;margin-top:16px}
+
+/* footer */
+.lfoot{border-top:1px solid var(--line);padding-top:26px;padding-bottom:52px;
+  display:grid;gap:10px}
+.lfoot span{font-size:12px;line-height:1.55;color:var(--ink3);max-width:62ch}
+.lfoot-b{font-size:13px!important;font-weight:600;color:var(--ink2)!important}
+
+@media (min-width:760px){
+  .landing section,.landing header,.landing footer{padding-left:40px;padding-right:40px}
+  .lhero{padding-top:96px;padding-bottom:72px}
+  .lfacts{grid-template-columns:repeat(3,1fr);gap:0 32px;border-top:0}
+  .lfacts div{flex-direction:column;gap:8px;border-top:1px solid var(--line);
+    border-bottom:0;padding:20px 0 4px}
+  .lfacts b{min-width:0;font-size:28px}
+  .lcut{grid-template-columns:1fr 1fr;gap:56px;padding-top:104px}
+  .spec{padding:24px 22px 22px}
+  .sp-val{font-size:44px}
+  .sp-chart{height:130px}
+  .lcut.flip figure{order:2}
+  .lgrid ul{grid-template-columns:1fr 1fr;column-gap:44px}
+  .lgrid li:nth-last-child(2){border-bottom:0}
+  .lgrid li:last-child{border-bottom:0}
+}
+
+
+/* =========================================================================
+   v0.17 — themes
+   Three rounds of me picking a palette and a face for someone else went
+   nowhere, so the choice belongs to the person looking at it. Every theme is
+   a complete token set: no theme leans on another's value, so adding one is
+   additive and cannot half-apply. `data-theme` and `data-font` are stamped on
+   <html> before first paint by the inline script in base.html.
+
+   The figure face deliberately follows --sans, so choosing a typeface also
+   chooses what the portfolio total looks like. That number is the largest
+   thing on the screen and it was the one thing not switchable before.
+   ========================================================================= */
+
+/* ---- palettes ------------------------------------------------------- */
+:root,
+[data-theme="ember"]{
+  --bg:#0d0907; --bg2:#161110; --bg3:#1d1512; --line:#241a16; --line2:#33251f;
+  --ink:#f7f0ea; --ink2:#a89890; --ink3:#6b5c55;
+  --acc:#ff6a3d; --acc-ink:#140a06; --up:#5fbf87; --down:#ff5252;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="ultramarine"]{
+  --bg:#06080f; --bg2:#0f1320; --bg3:#131829; --line:#171d30; --line2:#232b45;
+  --ink:#eef1fb; --ink2:#949cb8; --ink3:#575e78;
+  --acc:#4d7cff; --acc-ink:#f2f5ff; --up:#3ecf9a; --down:#ff5c72;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="steel"]{
+  --bg:#0b0d10; --bg2:#12151a; --bg3:#1a1e25; --line:#1e232b; --line2:#2b323d;
+  --ink:#eef1f5; --ink2:#98a1ad; --ink3:#5b636f;
+  --acc:#8fb3d9; --acc-ink:#0a0d11; --up:#6fb894; --down:#d4776a;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="acid"]{
+  --bg:#000; --bg2:#0d0d0d; --bg3:#161616; --line:#1e1e1e; --line2:#2a2a2a;
+  --ink:#fff; --ink2:#9b9b9b; --ink3:#5a5a5a;
+  --acc:#c8ff3d; --acc-ink:#0a0a0a; --up:#c8ff3d; --down:#ff5d5d;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="gold"]{
+  --bg:#0c0b09; --bg2:#151310; --bg3:#1a1815; --line:#211e19; --line2:#302b23;
+  --ink:#f3efe6; --ink2:#a49c8b; --ink3:#6a6353;
+  --acc:#d9a441; --acc-ink:#14110a; --up:#7fb96b; --down:#cf6a52;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="jade"]{
+  --bg:#05100c; --bg2:#0b1a14; --bg3:#0f2019; --line:#12241c; --line2:#1d3529;
+  --ink:#eaf5ef; --ink2:#8fa89b; --ink3:#54695e;
+  --acc:#35d6a0; --acc-ink:#04140d; --up:#35d6a0; --down:#ef6d6d;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+[data-theme="mono"]{
+  --bg:#08080a; --bg2:#111114; --bg3:#17171a; --line:#1c1c20; --line2:#2a2a30;
+  --ink:#f4f4f6; --ink2:#96969e; --ink3:#5c5c64;
+  --acc:#f4f4f6; --acc-ink:#08080a; --up:#f4f4f6; --down:#9a9aa2;
+  --miss-filter:grayscale(1) brightness(.62) contrast(.9);
+}
+/* Light. Every card tracker is dark; this is the one direction none of them
+   take. Missing cards have to be dimmed *up* here, not down — brightness(.62)
+   on a light ground reads as selected rather than absent. */
+[data-theme="vault"]{
+  --bg:#f2efe8; --bg2:#eae6dd; --bg3:#e2ddd1; --line:#dcd7ca; --line2:#c9c2b1;
+  --ink:#16151a; --ink2:#5f5b52; --ink3:#8d877b;
+  --acc:#9c2f2a; --acc-ink:#fdfbf6; --up:#2f7d4f; --down:#9c2f2a;
+  --miss-filter:grayscale(1) brightness(1.22) contrast(.72) opacity(.5);
+}
+[data-theme="gallery"]{
+  --bg:#f6f7f9; --bg2:#eef0f3; --bg3:#e7e9ee; --line:#e2e5ea; --line2:#ced3db;
+  --ink:#111418; --ink2:#5a6270; --ink3:#8b93a1;
+  --acc:#1b4dd6; --acc-ink:#fff; --up:#0f7a4d; --down:#c0392b;
+  --miss-filter:grayscale(1) brightness(1.22) contrast(.72) opacity(.5);
+}
+.cell.miss img{filter:var(--miss-filter,grayscale(1) brightness(.62) contrast(.9))}
+
+/* ---- faces ---------------------------------------------------------- */
+:root,[data-font="bricolage"]{--sans:"Bricolage Grotesque",system-ui,-apple-system,sans-serif}
+[data-font="familjen"]  {--sans:"Familjen Grotesk",system-ui,-apple-system,sans-serif}
+[data-font="archivo"]   {--sans:Archivo,system-ui,-apple-system,sans-serif}
+[data-font="schibsted"] {--sans:"Schibsted Grotesk",system-ui,-apple-system,sans-serif}
+[data-font="chivo"]     {--sans:Chivo,system-ui,-apple-system,sans-serif}
+[data-font="intertight"]{--sans:"Inter Tight",system-ui,-apple-system,sans-serif}
+[data-font="instrument"]{--sans:"Instrument Sans",system-ui,-apple-system,sans-serif}
+[data-font="fraunces"]  {--sans:Fraunces,Georgia,serif}
+/* Fraunces is a serif; at display sizes it needs less weight than a grotesque
+   to hold the same presence, or the headline turns to soup. */
+[data-font="fraunces"] .lhero h1,[data-font="fraunces"] .lend h2,
+[data-font="fraunces"] .lcut h2,[data-font="fraunces"] .lgrid-h{font-weight:600}
+
+/* ---- the picker on /profile ----------------------------------------- */
+.themer{display:grid;gap:16px}
+.themer .grp > b{display:block;font-size:11px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink3);margin-bottom:9px}
+.swatches{display:flex;flex-wrap:wrap;gap:7px}
+.sw-b{display:flex;align-items:center;gap:7px;background:var(--bg2);
+  border:1px solid var(--line2);border-radius:var(--r);padding:6px 10px 6px 7px;
+  font-size:12.5px;color:var(--ink2);cursor:pointer;font:inherit;font-size:12.5px}
+.sw-b:hover{border-color:var(--ink3)}
+.sw-b[aria-pressed="true"]{border-color:var(--acc);color:var(--ink)}
+.sw-b .dot{width:24px;height:16px;border-radius:2px;flex:none;position:relative;
+  overflow:hidden;box-shadow:inset 0 0 0 1px var(--line2)}
+.sw-b .dot i{position:absolute;right:0;top:0;bottom:0;width:8px}
+.faces{display:flex;flex-wrap:wrap;gap:7px}
+.fc-b{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r);
+  padding:7px 11px;font-size:15px;line-height:1.2;color:var(--ink2);cursor:pointer}
+.fc-b:hover{border-color:var(--ink3)}
+.fc-b[aria-pressed="true"]{border-color:var(--acc);color:var(--ink)}
+.fc-b span{display:block;font-family:var(--sans);font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink3);margin-top:3px}
+
+
+/* ==== bulk import review ================================================= */
+/* The importer is two-step now: match everything, show what it found, commit
+   only what was confirmed. This is the review table. */
+.imp-bar{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin:4px 0 10px}
+.imp-bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s ease}
+.imp-count{font-size:12.5px;color:var(--ink2)}
+
+.imp-legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.imp-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);
+  border-radius:var(--r);padding:5px 9px;font-size:11.5px;color:var(--ink2);
+  background:transparent;cursor:pointer;font:inherit;font-size:11.5px}
+.imp-chip b{font-weight:600;color:var(--ink)}
+.imp-chip.ok{border-color:color-mix(in srgb,var(--up) 45%,var(--line2));color:var(--up)}
+.imp-chip.warn{border-color:color-mix(in srgb,var(--acc) 45%,var(--line2));color:var(--acc)}
+.imp-chip.bad{border-color:color-mix(in srgb,var(--down) 45%,var(--line2));color:var(--down)}
+.imp-chip.ok b,.imp-chip.warn b,.imp-chip.bad b{color:inherit}
+
+/* the "is this column cost or market value?" question */
+.imp-paid{border:1px solid var(--acc);border-radius:var(--r2);padding:14px;
+  margin-bottom:16px;background:var(--bg2)}
+.imp-paid b{display:block;font-size:14px;margin-bottom:5px}
+.imp-paid span{display:block;font-size:12.5px;color:var(--ink2);line-height:1.55}
+
+.imp-rows{border-top:1px solid var(--line)}
+.imp-row{display:flex;gap:11px;align-items:flex-start;padding:11px 0;
+  border-bottom:1px solid var(--line)}
+.imp-row.off{opacity:.42}
+.imp-keep input{width:18px;height:18px;margin-top:2px}
+.imp-main{flex:1;min-width:0}
+.imp-name{font-size:14.5px;font-weight:500}
+.imp-src{font-size:11.5px;color:var(--ink3);margin-top:2px}
+.imp-got{font-size:12px;color:var(--ink2);margin-top:3px}
+.imp-none{color:var(--down)}
+.imp-note{font-size:11.5px;color:var(--ink3);margin-top:4px;line-height:1.45}
+.imp-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.imp-tag{font-style:normal;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  border:1px solid var(--line2);border-radius:2px;padding:2px 5px;color:var(--ink3)}
+.imp-tag.grade{border-color:var(--acc);color:var(--acc)}
+.imp-tag.region{border-color:var(--ink3);color:var(--ink2)}
+.imp-right{flex:none;text-align:right;display:flex;flex-direction:column;
+  align-items:flex-end;gap:4px}
+.imp-price{font-size:13px}
+.imp-mkt{font-size:11px;color:var(--ink3)}
+.imp-filter{display:flex;gap:6px;flex-wrap:wrap}
+
+/* graded pricing provenance — a slab is not worth what a raw copy is, and the
+   page has to say which number it is showing */
+.gradebox{border:1px solid var(--line2);border-left:2px solid var(--up);
+  border-radius:var(--r);padding:11px 13px;margin-bottom:14px;background:var(--bg2)}
+.gradebox.warn{border-left-color:var(--acc)}
+.gradebox b{display:block;font-size:13px;font-weight:600;margin-bottom:3px}
+.gradebox span{display:block;font-size:12px;line-height:1.55;color:var(--ink2)}
+
+/* "these matched nothing — keep them anyway" */
+.imp-keepbox{border:1px solid var(--line2);border-left:2px solid var(--down);
+  border-radius:var(--r);padding:13px;margin-top:16px;background:var(--bg2)}
+.imp-keepbox b{display:block;font-size:13.5px;margin-bottom:4px}
+.imp-keepbox span{display:block;font-size:12.5px;line-height:1.55;color:var(--ink2)}
+.linkbtn{background:none;border:0;color:var(--ink3);font-size:11.5px;cursor:pointer;
+  padding:2px 0;text-decoration:underline;font:inherit;font-size:11.5px}
+.linkbtn:hover{color:var(--down)}
+
+/* ==== worth grading? ===================================================== */
+.grade-card{border:1px solid var(--line);border-radius:var(--r2);margin-bottom:12px;
+  overflow:hidden;background:var(--bg2)}
+.grade-head{display:flex;gap:12px;align-items:center;padding:12px}
+.grade-head img{width:42px;height:58px;object-fit:cover;border-radius:var(--r);flex:none}
+.grade-head .t{flex:1;min-width:0}
+.grade-head .n{font-size:15px;font-weight:500}
+.grade-head .m{font-size:12px;color:var(--ink2);margin-top:2px}
+.grade-head .m b{color:var(--ink)}
+.grade-head .best{flex:none;text-align:right;font-size:18px;font-weight:600;
+  color:var(--up);letter-spacing:-.03em}
+.grade-head .best span{display:block;font-size:10px;font-weight:400;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-top:2px}
+.grade-rows{border-top:1px solid var(--line)}
+.grade-row{display:grid;grid-template-columns:auto 1fr auto auto auto;gap:8px;
+  align-items:baseline;padding:8px 12px;border-bottom:1px solid var(--line);
+  font-size:12.5px}
+.grade-row:last-child{border-bottom:0}
+.grade-row .g{font-weight:600;min-width:4.6em}
+.grade-row .x{color:var(--ink3);font-size:11.5px}
+.grade-row .c{color:var(--ink3)}
+.grade-row .n{font-weight:600;text-align:right;min-width:5em}
+.grade-row.good .n{color:var(--up)}
+.grade-row.bad .n{color:var(--down)}
+.grade-row .s{grid-column:1/-1;font-size:11px;color:var(--ink3);margin-top:-2px}

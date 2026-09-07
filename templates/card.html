@@ -9,9 +9,41 @@
   <div>
     <div class="n">{{ c.name }}</div>
     <div class="m">{{ c.set_name }} · {{ c.local_id }}{% if c.rarity %}<br>{{ c.rarity }}{% endif %}{% if c.grade %}<br>{{ c.grade }}{% endif %}</div>
-    <div class="p num">£{{ '{:,.2f}'.format(c.price or 0) }}<span>{% if c.manual_gbp is not none %}manual{% else %}each{% endif %}</span></div>
+    <div class="p num">£{{ '{:,.2f}'.format(c.price or 0) }}<span>{%
+      if c.price_basis == 'manual' %}manual{%
+      elif c.price_basis == 'graded' %}{{ c.grade }}{%
+      else %}each{% endif %}</span></div>
   </div>
 </div>
+
+{% if c.price_basis == 'graded' %}
+<div class="gradebox">
+  <b>Priced as {{ c.grade }}</b>
+  <span>Median of {{ c.graded.samples }} sold
+    {% if c.graded.source == 'sold-log' %}record{{ 's' if c.graded.samples != 1 }} from the sold log{% else %}listing{{ 's' if c.graded.samples != 1 }}{% endif %},
+    £{{ '{:,.2f}'.format(c.graded.low) }}–£{{ '{:,.2f}'.format(c.graded.high) }}.
+    {% if c.graded.raw %}Raw sits at £{{ '{:,.2f}'.format(c.graded.raw) }}.{% endif %}
+    Comps are thin, so treat it as a guide, not a quote.</span>
+</div>
+{% elif c.roi %}
+<div class="gradebox">
+  <b>Worth grading?</b>
+  <span>Raw is £{{ '{:,.2f}'.format(c.price) }}.
+    {% for r in c.roi %}{{ r.grade }} has sold around £{{ '{:,.2f}'.format(r.graded) }}
+    ({{ r.samples }} sold), which nets
+    {{ '+' if r.net > 0 }}£{{ '{:,.2f}'.format(r.net|abs) }} after about
+    £{{ '{:,.2f}'.format(r.cost) }} of fees{{ '. ' if not loop.last else '. ' }}{% endfor %}
+    You can't order a grade, so treat the top line as the best case.
+    <a href="/grading" style="text-decoration:underline">See all candidates</a>.</span>
+</div>
+{% elif c.price_basis == 'raw-fallback' %}
+<div class="gradebox warn">
+  <b>{{ c.grade }} — priced as raw</b>
+  <span>No graded sales found for this one yet, so the figure above is the raw
+    market price. A slabbed card usually trades well above that, so treat this
+    as a floor. Logging a graded sale on the sold log feeds this number.</span>
+</div>
+{% endif %}
 
 <div class="chips" style="margin-bottom:14px">
   {% for l, v in [('24h', c.chg1), ('7d', c.chg7), ('30d', c.chg30)] %}

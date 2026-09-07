@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="sec" style="padding-top:22px">
+  <h2>Manual entries</h2>
+  <p class="hint" style="text-align:left;padding:0 0 14px">
+    Sealed product, and cards no price API carries — Chinese and Japanese
+    printings, oddities, anything TCGdex has never heard of. You set the value;
+    it counts toward your portfolio like everything else.
+  </p>
+
+  <div class="split">
+    <div class="field"><label>Name</label><input id="m-name" placeholder="e.g. Cubone (Full Art)"></div>
+    <div class="field"><label>What is it</label>
+      <select id="m-kind">
+        <option value="card">Card</option>
+        <option value="sealed">Sealed product</option>
+        <option value="other">Other</option>
+      </select></div>
+  </div>
+  <div class="split">
+    <div class="field"><label>Set</label><input id="m-set" placeholder="Gem Pack Vol. 3"></div>
+    <div class="field"><label>Number</label><input id="m-number" placeholder="1904/04"></div>
+  </div>
+  <div class="split">
+    <div class="field"><label>Quantity</label><input id="m-qty" type="number" min="1" value="1" inputmode="numeric"></div>
+    <div class="field"><label>Region</label>
+      <select id="m-region">
+        <option value="">English</option>
+        <option value="jp">Japanese</option>
+        <option value="cn">Chinese</option>
+        <option value="kr">Korean</option>
+      </select></div>
+  </div>
+  <div class="split">
+    <div class="field"><label>Value each (£)</label><input id="m-value" inputmode="decimal" placeholder="199.84"></div>
+    <div class="field"><label>Paid each (£)</label><input id="m-paid" inputmode="decimal" placeholder="optional"></div>
+  </div>
+  <div class="field"><label>Note</label><input id="m-note" placeholder="optional"></div>
+  <button class="btn" id="m-add">Add</button>
+</section>
+
+<section class="sec">
+  <h2>Tracked manually <span class="tiny muted" id="m-count"></span></h2>
+  <div class="rows" id="m-list"></div>
+</section>
+{% endblock %}
+
+{% block script %}
+<script>
+let ITEMS = {{ items|tojson }};
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"]/g,
+    ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+}
+
+function draw() {
+  const total = ITEMS.reduce((a, i) => a + (i.value || 0), 0);
+  document.getElementById('m-count').textContent =
+    ITEMS.length ? `${ITEMS.length} · £${total.toLocaleString('en-GB', {minimumFractionDigits: 2})}` : '';
+  document.getElementById('m-list').innerHTML = ITEMS.map(i => {
+    const sub = [i.set_name, i.number, i.kind === 'sealed' ? 'Sealed' : null]
+      .filter(Boolean).join(' · ');
+    const tags = [
+      i.region ? `<i class="imp-tag region">${esc(i.region.toUpperCase())}</i>` : '',
+      i.grade ? `<i class="imp-tag grade">${esc(i.grade)}</i>` : '',
+      i.variant ? `<i class="imp-tag">${esc(i.variant)}</i>` : '',
+    ].join('');
+    return `<div class="row" data-id="${i.id}">
+      <div class="t">
+        <div class="n">${esc(i.name)}${i.qty > 1 ? ` <span class="num">×${i.qty}</span>` : ''}</div>
+        ${sub ? `<div class="m">${esc(sub)}</div>` : ''}
+        ${tags ? `<div class="imp-tags">${tags}</div>` : ''}
+      </div>
+      <div class="r">
+        <div class="p num">£${(i.value || 0).toFixed(2)}</div>
+        <button class="linkbtn" data-del="${i.id}">Remove</button>
+      </div>
+    </div>`;
+  }).join('') || '<p class="hint" style="text-align:left">Nothing yet.</p>';
+
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const id = +b.dataset.del;
+    try {
+      await api('/api/custom', 'DELETE', {id});
+      ITEMS = ITEMS.filter(i => i.id !== id);
+      draw(); toast('Removed');
+    } catch { toast('Could not remove that'); }
+  });
+}
+
+const val = id => document.getElementById(id).value.trim();
+
+document.getElementById('m-add').onclick = async e => {
+  const name = val('m-name');
+  if (!name) return toast('Give it a name');
+  const body = {
+    name, kind: val('m-kind'), set_name: val('m-set'), number: val('m-number'),
+    region: val('m-region'), note: val('m-note'),
+    qty: +val('m-qty') || 1,
+    value: val('m-value') === '' ? null : +val('m-value'),
+    paid: val('m-paid') === '' ? null : +val('m-paid'),
+  };
+  e.target.disabled = true;
+  try {
+    const r = await api('/api/custom', 'POST', body);
+    ITEMS.unshift({...body, id: r.id, value: (body.value || 0) * body.qty});
+    ['m-name','m-set','m-number','m-value','m-paid','m-note'].forEach(i =>
+      document.getElementById(i).value = '');
+    document.getElementById('m-qty').value = '1';
+    draw(); toast('Added');
+  } catch (err) { toast(err.message || 'Could not add that'); }
+  e.target.disabled = false;
+};
+
+draw();
+</script>
+{% endblock %}

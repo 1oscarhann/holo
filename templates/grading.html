@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="sec" style="padding-top:22px">
+  <h2>Worth grading?</h2>
+  <p class="hint" style="text-align:left;padding:0 0 6px">
+    Raw cards you own where a slab has sold for enough to cover the cost of
+    getting one. Net is what you'd be up <i>after</i> fees, compared with just
+    selling the card raw today.
+  </p>
+  <p class="hint" style="text-align:left;padding:0 0 16px;color:var(--ink3)">
+    You can't order a grade. Every outcome we have sold data for is listed, so
+    you can see the downside as well as the best case.
+  </p>
+
+  {% if not cands %}
+  <p class="hint" style="text-align:left">
+    Nothing clears the bar right now. That needs two things: a raw price for the
+    card, and at least {{ 3 }} sold slabs of the same card to compare against —
+    graded comps are thin, so most cards won't have them yet.
+  </p>
+  {% endif %}
+
+  {% for c in cands %}
+  <div class="grade-card">
+    <a class="grade-head" href="/card/{{ c.hid }}">
+      <img {{ img_attrs(c) }} alt="">
+      <div class="t">
+        <div class="n">{{ c.name }}</div>
+        <div class="m">{{ c.set_name }} · {{ c.local_id }}</div>
+        <div class="m">Raw today · <b class="num">£{{ '{:,.2f}'.format(c.price) }}</b></div>
+      </div>
+      <div class="best num">+£{{ '{:,.2f}'.format(c.best.net) }}<span>best case</span></div>
+    </a>
+    <div class="grade-rows">
+      {% for r in c.roi %}
+      <div class="grade-row {{ 'good' if r.worth_it else 'bad' }}">
+        <span class="g">{{ r.grade }}</span>
+        <span class="v num">£{{ '{:,.2f}'.format(r.graded) }}</span>
+        <span class="x num">{{ r.multiple }}×</span>
+        <span class="c num">−£{{ '{:,.2f}'.format(r.cost) }}</span>
+        <span class="n num">{{ '+' if r.net > 0 }}£{{ '{:,.2f}'.format(r.net|abs) }}</span>
+        <span class="s">{{ r.samples }} sold</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+<section class="sec">
+  <h2>What this assumes</h2>
+  <div class="prem">
+    <b>Check these against the grader's current card</b>
+    <span>Grading companies change tiers and pricing regularly and none of them
+      publish a feed, so these are estimates, not quotes. Everything here is
+      configurable — <span class="num">GRADING_POSTAGE</span>,
+      <span class="num">GRADING_BATCH</span>,
+      <span class="num">GRADING_MIN_UPLIFT</span>.</span>
+  </div>
+  <div class="figs" style="margin-top:12px">
+    {% for label, ceiling, fee in tiers %}
+    <div class="fig"><div class="k">{{ label }} · up to £{{ '{:,.0f}'.format(ceiling) }}</div>
+      <div class="v num">£{{ '{:,.2f}'.format(fee) }}</div></div>
+    {% endfor %}
+  </div>
+  <p class="hint" style="text-align:left;padding:12px 0 0">
+    Plus £{{ '{:,.2f}'.format(postage) }} insured postage both ways, split across
+    a submission of {{ batch }} cards. Not included: the chance it comes back
+    lower than you hoped, or the months it spends away from you.
+  </p>
+</section>
+{% endblock %}

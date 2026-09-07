@@ -12,6 +12,7 @@ Price cache is shared across all users; one fetch per card per day.
 Snapshots: one row per user per day, taken at 06:00 (and on first login of the day).
 """
 
+import csv
 import json
 import os
 from urllib.parse import quote
@@ -35,8 +36,12 @@ from werkzeug.security import check_password_hash, generate_password_hash
 DATABASE_URL = os.environ["DATABASE_URL"]
 CRON_SECRET = os.environ.get("CRON_SECRET")
 TCGDEX = "https://api.tcgdex.net/v2/en"
+# Fallbacks only. The live rate is fetched daily into fx_rates; these are what
+# the app uses when that has never succeeded, so they should be roughly right
+# but are not expected to be current. Read them through fx_rate(), never directly.
 EUR_GBP = float(os.environ.get("EUR_GBP", "0.85"))
 USD_GBP = float(os.environ.get("USD_GBP", "0.78"))
+FX_API = os.environ.get("FX_API", "https://api.frankfurter.app")
 PRICE_TTL_HOURS = 20
 PTCGIO_IMG = "https://images.pokemontcg.io"
 VERSION = os.environ.get("APP_VERSION", "0.16.0-beta")
@@ -180,16 +185,16 @@ def placeholder(set_id, local_id):
     sub = escape(str(set_id).upper()[:10])
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 245 342">
 <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-<stop offset="0" stop-color="#1b2030"/><stop offset="1" stop-color="#12151f"/>
+<stop offset="0" stop-color="#2a211c"/><stop offset="1" stop-color="#1b1512"/>
 </linearGradient></defs>
 <rect width="245" height="342" rx="14" fill="url(#g)"/>
 <rect x="6" y="6" width="233" height="330" rx="10" fill="none"
-      stroke="#2c3348" stroke-width="1.5"/>
-<text x="122.5" y="168" text-anchor="middle" fill="#5a6480"
+      stroke="#3b2f27" stroke-width="1.5"/>
+<text x="122.5" y="168" text-anchor="middle" fill="#8a7264"
       font-family="system-ui,sans-serif" font-size="42" font-weight="700">{label}</text>
-<text x="122.5" y="196" text-anchor="middle" fill="#4a5270"
+<text x="122.5" y="196" text-anchor="middle" fill="#77604f"
       font-family="system-ui,sans-serif" font-size="14" letter-spacing="2">{sub}</text>
-<text x="122.5" y="300" text-anchor="middle" fill="#39405a"
+<text x="122.5" y="300" text-anchor="middle" fill="#4e3f36"
       font-family="system-ui,sans-serif" font-size="11" letter-spacing="1">NO ART</text>
 </svg>"""
     return app.response_class(svg, mimetype="image/svg+xml",
@@ -265,6 +270,50 @@ CREATE TABLE IF NOT EXISTS set_cards (
 CREATE INDEX IF NOT EXISTS set_cards_set ON set_cards (set_id, sort_n);
 CREATE INDEX IF NOT EXISTS watchlist_user ON watchlist (user_id);
 CREATE INDEX IF NOT EXISTS sales_user ON sales (user_id, sold_on DESC);
+
+-- Bulk import runs in two steps: parse (fast, no network) then resolve (one
+-- TCGdex round trip per row, ~1.5s). A 143-row paste is 3-4 minutes, which no
+-- request survives on a 120s worker, so rows land here first and a background
+-- thread fills in the matches while the page polls.
+CREATE TABLE IF NOT EXISTS import_jobs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  state TEXT NOT NULL DEFAULT 'resolving',
+  total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0,
+  columns JSONB, paid_column TEXT, error TEXT,
+  created TIMESTAMPTZ DEFAULT now(), finished TIMESTAMPTZ);
+CREATE INDEX IF NOT EXISTS import_jobs_user ON import_jobs (user_id, created DESC);
+CREATE TABLE IF NOT EXISTS import_rows (
+  id SERIAL PRIMARY KEY,
+  job_id INTEGER REFERENCES import_jobs(id) ON DELETE CASCADE,
+  n INTEGER NOT NULL,
+  raw JSONB,
+  name TEXT, variant TEXT, set_name TEXT, number TEXT, region TEXT,
+  qty INTEGER NOT NULL DEFAULT 1, paid REAL, market REAL,
+  condition TEXT, grade TEXT, finish TEXT,
+  card_id TEXT, set_id TEXT, confidence TEXT, note TEXT,
+  skip BOOLEAN NOT NULL DEFAULT false);
+CREATE INDEX IF NOT EXISTS import_rows_job ON import_rows (job_id, n);
+
+-- Graded prices, shared across users exactly like `prices`: one lookup per
+-- (card, grade) per refresh serves everybody. Kept in its own table rather
+-- than as rows in `prices` because the cadence, the source and the confidence
+-- are all different — comps are sparse, so `samples` decides whether a number
+-- is trustworthy enough to show.
+CREATE TABLE IF NOT EXISTS graded_prices (
+  card_id TEXT, grade TEXT, day DATE,
+  gbp REAL, low REAL, high REAL, samples INTEGER NOT NULL DEFAULT 0,
+  source TEXT, fetched TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (card_id, grade, day));
+CREATE INDEX IF NOT EXISTS graded_card ON graded_prices (card_id, grade, day DESC);
+
+-- Live FX. EUR_GBP and USD_GBP were hardcoded, which quietly skewed every
+-- TCGplayer fallback and, once graded pricing landed, every graded price too:
+-- eBay comps are USD and were being multiplied by a constant last checked by
+-- hand. Shared across users like every other price.
+CREATE TABLE IF NOT EXISTS fx_rates (
+  pair TEXT, day DATE, rate REAL, source TEXT, fetched TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (pair, day));
 """
 
 
@@ -293,6 +342,22 @@ with raw_db() as c:
     c.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS data JSONB")
     c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium BOOLEAN NOT NULL DEFAULT false")
     c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_since TIMESTAMPTZ")
+    # v0.18: the importer was dropping variant, condition, finish and region on
+    # the floor. Grade already existed and is part of the holdings unique key.
+    for col, typ in (("condition", "TEXT"), ("finish", "TEXT"),
+                     ("region", "TEXT"), ("variant", "TEXT")):
+        c.execute(f"ALTER TABLE holdings ADD COLUMN IF NOT EXISTS {col} {typ}")
+    # A graded sale is the only price signal nobody else has. Recording the
+    # grade on the sale turns the sold log into a second source.
+    c.execute("ALTER TABLE sales ADD COLUMN IF NOT EXISTS grade TEXT")
+    # v0.18: custom_items existed with an API and no UI. It is now the home for
+    # anything TCGdex cannot price — sealed product, and the import rows that
+    # deliberately refuse to attach to an English card (Chinese Gem Pack, JP
+    # printings with no English release). Those rows used to evaporate.
+    for col, typ in (("set_name", "TEXT"), ("number", "TEXT"), ("region", "TEXT"),
+                     ("variant", "TEXT"), ("grade", "TEXT"), ("condition", "TEXT"),
+                     ("finish", "TEXT"), ("image", "TEXT")):
+        c.execute(f"ALTER TABLE custom_items ADD COLUMN IF NOT EXISTS {col} {typ}")
 
 # ------------------------------------------------------------------------- auth
 
@@ -312,6 +377,21 @@ def uid():
     return session["uid"]
 
 
+def safe_next(target):
+    """Return ?next= only if it is a path on this site, else None.
+
+    Unvalidated, this hands anyone a redirect off the domain that runs after a
+    real login on the real login form — which is the whole of a phishing hop.
+    Only a single-slash relative path is allowed: "//evil" is protocol-relative
+    and browsers normalise a backslash to a slash, so both are rejected too.
+    """
+    if not target or not target.startswith("/") or target.startswith("//"):
+        return None
+    if "\\" in target or any(ch in target for ch in "\r\n\t") or "\0" in target:
+        return None
+    return target
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     err = None
@@ -323,7 +403,7 @@ def login():
             session["uid"] = row["id"]
             session["username"] = u
             ensure_snapshot(row["id"])
-            return redirect(request.args.get("next") or url_for("home"))
+            return redirect(safe_next(request.args.get("next")) or url_for("home"))
         err = "Wrong username or password."
     return render_template("auth.html", mode="login", err=err)
 
@@ -369,6 +449,72 @@ def tcgdex(path, **params):
     return None
 
 
+# ------------------------------------------------------------------ live FX
+
+# price_from() is called in loops over every holding, so the rate cannot be a
+# database read per card. It is cached in-process and refreshed at most hourly;
+# a miss anywhere in the chain falls through to the hardcoded constant, so a
+# dead FX feed costs accuracy rather than the page.
+_FX = {"at": 0.0, "rates": {}}
+_FX_TTL = 3600
+FX_FALLBACK = {"EUR_GBP": EUR_GBP, "USD_GBP": USD_GBP}
+
+
+def fx_rate(pair):
+    """Live rate for 'EUR_GBP' / 'USD_GBP', or the hardcoded fallback."""
+    now = time.time()
+    if now - _FX["at"] > _FX_TTL:
+        _FX["at"] = now                      # stamp first: a failure must not retry per card
+        try:
+            with raw_db() as c:
+                rows = c.execute("""SELECT DISTINCT ON (pair) pair, rate FROM fx_rates
+                                    WHERE day > CURRENT_DATE - 14
+                                    ORDER BY pair, day DESC""").fetchall()
+            _FX["rates"] = {r["pair"]: r["rate"] for r in rows}
+        except Exception:
+            pass                             # keep whatever was cached
+    return _FX["rates"].get(pair) or FX_FALLBACK.get(pair, 1.0)
+
+
+def refresh_fx(conn=None):
+    """Fetch today's rates. Returns how many pairs were stored.
+
+    Frankfurter serves ECB reference rates, free and without a key. The
+    response is read defensively for the same reason the comps feed is.
+    """
+    c = conn or db()
+    today = date.today()
+    have = {r["pair"] for r in c.execute(
+        "SELECT pair FROM fx_rates WHERE day=%s", (today,)).fetchall()}
+    if len(have) >= 2:
+        return 0
+    try:
+        r = requests.get(f"{FX_API}/latest", params={"from": "GBP", "to": "EUR,USD"},
+                         timeout=10)
+        if r.status_code != 200:
+            return 0
+        rates = (r.json() or {}).get("rates") or {}
+    except (requests.RequestException, ValueError, AttributeError):
+        return 0
+
+    n = 0
+    for cur in ("EUR", "USD"):
+        v = rates.get(cur)
+        if not isinstance(v, (int, float)) or v <= 0:
+            continue
+        # the feed quotes GBP->X; we price X->GBP
+        c.execute("""INSERT INTO fx_rates (pair, day, rate, source, fetched)
+                     VALUES (%s,%s,%s,'frankfurter',now())
+                     ON CONFLICT (pair, day) DO UPDATE
+                     SET rate=EXCLUDED.rate, fetched=now()""",
+                  (f"{cur}_GBP", today, round(1.0 / float(v), 6)))
+        n += 1
+    if conn is None:
+        c.commit()
+    _FX["at"] = 0.0                          # force the cache to pick the new rates up
+    return n
+
+
 def price_from(card):
     """Return (gbp, source) from a TCGdex card object, or (None, None)."""
     p = (card or {}).get("pricing") or {}
@@ -376,12 +522,12 @@ def price_from(card):
     for k in ("trend", "avg7", "avg", "avg30", "low"):
         v = cm.get(k)
         if v:
-            return round(v * EUR_GBP, 2), f"cardmarket.{k}"
+            return round(v * fx_rate("EUR_GBP"), 2), f"cardmarket.{k}"
     tp = p.get("tcgplayer") or {}
     for variant in ("holofoil", "reverse-holofoil", "normal", "1st-edition-holofoil", "1st-edition"):
         v = (tp.get(variant) or {}).get("marketPrice")
         if v:
-            return round(v * USD_GBP, 2), f"tcgplayer.{variant}"
+            return round(v * fx_rate("USD_GBP"), 2), f"tcgplayer.{variant}"
     return None, None
 
 
@@ -434,6 +580,297 @@ def refresh_price(card_id, force=False, conn=None):
         c.commit()
     return gbp
 
+# ------------------------------------------------------------ graded pricing
+#
+# price_from() returns one raw market price. A PSA 10 routinely trades at
+# several multiples of raw, so a graded collection priced from it is
+# systematically undervalued — a GBP44 Ditto V showed as roughly GBP1.
+#
+# There is no free graded feed. TCG Price Lookup's free tier is TCGplayer raw
+# only; graded needs their paid Trader plan. The one genuinely free route is
+# eBay *sold* comps, where the grade is in the listing title and can be parsed
+# out. That is what this does.
+#
+# Two properties matter more than coverage here. Comps are sparse, so a median
+# over two sales is noise and is not shown; and if the source is unreachable
+# the card falls back to raw and says so, rather than inventing a number.
+
+# The graders whose slabs actually turn up in a UK collection. Used both to
+# read a condition field on import and to read a grade out of a listing title.
+GRADERS = ("PSA", "BGS", "CGC", "SGC", "ACE", "TAG")
+_GRADE_RE = re.compile(
+    r"\b(" + "|".join(GRADERS) + r")\s*\.?\s*(10|[0-9](?:\.5)?)\b", re.I)
+
+GRADED_API = os.environ.get("GRADED_API", "https://tcgapi.net/v1")
+GRADED_API_KEY = os.environ.get("GRADED_API_KEY", "")
+GRADED_MIN_SAMPLES = int(os.environ.get("GRADED_MIN_SAMPLES", "3"))
+GRADED_TTL_DAYS = int(os.environ.get("GRADED_TTL_DAYS", "7"))
+
+# Titles are free text written by sellers: "PSA 10 GEM MINT", "psa10",
+# "BGS 9.5 (Black Label)", "CGC 8.5". Whitespace between company and number is
+# optional and the qualifier that follows is ignored.
+_TITLE_GRADE_RE = re.compile(
+    r"\b(" + "|".join(GRADERS) + r")\s*-?\s*(10|[0-9](?:\.5)?)\b", re.I)
+
+
+def grade_from_title(title):
+    """Pull 'PSA 10' out of an eBay listing title, or None if it is raw."""
+    if not title:
+        return None
+    m = _TITLE_GRADE_RE.search(str(title))
+    if not m:
+        return None
+    num = m.group(2)
+    if num.endswith(".0"):
+        num = num[:-2]
+    return f"{m.group(1).upper()} {num}"
+
+
+def _median(xs):
+    xs = sorted(xs)
+    n = len(xs)
+    if not n:
+        return None
+    mid = n // 2
+    return xs[mid] if n % 2 else (xs[mid - 1] + xs[mid]) / 2
+
+
+def fetch_comps(card, timeout=12):
+    """Sold comps for one card. Returns a list of {title, price, currency}.
+
+    The response shape is read defensively: this is a third-party feed that has
+    already changed hands once, and a schema change should degrade to "no
+    graded price" rather than a traceback on the portfolio page.
+    """
+    name = (card or {}).get("name")
+    if not name or not GRADED_API:
+        return []
+    q = " ".join(x for x in (name, card.get("set_name"), card.get("local_id")) if x)
+    params = {"q": q, "limit": 60}
+    if GRADED_API_KEY:
+        params["key"] = GRADED_API_KEY
+    try:
+        r = requests.get(f"{GRADED_API}/comps", params=params, timeout=timeout)
+        if r.status_code != 200:
+            return []
+        data = r.json()
+    except (requests.RequestException, ValueError):
+        return []
+
+    if isinstance(data, dict):
+        for key in ("comps", "results", "sales", "data", "items"):
+            if isinstance(data.get(key), list):
+                data = data[key]
+                break
+        else:
+            return []
+    if not isinstance(data, list):
+        return []
+
+    out = []
+    for it in data:
+        if not isinstance(it, dict):
+            continue
+        title = it.get("title") or it.get("name") or it.get("listing")
+        price = None
+        for key in ("price", "sold_price", "soldPrice", "amount", "value", "total"):
+            v = it.get(key)
+            if isinstance(v, dict):
+                v = v.get("value") or v.get("amount")
+            if isinstance(v, (int, float)) and v > 0:
+                price = float(v); break
+            if isinstance(v, str):
+                try:
+                    price = float(re.sub(r"[^\d.]", "", v)); break
+                except ValueError:
+                    pass
+        if title and price:
+            out.append({"title": title, "price": price,
+                        "currency": (it.get("currency") or "USD").upper()})
+    return out
+
+
+def _to_gbp(amount, currency):
+    if currency == "GBP":
+        return amount
+    if currency == "EUR":
+        return amount * fx_rate("EUR_GBP")
+    return amount * fx_rate("USD_GBP")      # comps are overwhelmingly USD
+
+
+def crowd_graded_price(card_id, grade, conn=None):
+    """Graded sales our own users recorded. Sparse at first, but nobody else has it."""
+    c = conn or db()
+    rows = c.execute("""SELECT sold, qty FROM sales
+                        WHERE card_id=%s AND grade=%s AND sold > 0
+                          AND sold_on > CURRENT_DATE - INTERVAL '180 days'""",
+                     (card_id, grade)).fetchall()
+    vals = [r["sold"] / max(1, r["qty"] or 1) for r in rows]
+    if not vals:
+        return None
+    return {"gbp": round(_median(vals), 2), "samples": len(vals),
+            "low": round(min(vals), 2), "high": round(max(vals), 2),
+            "source": "sold-log"}
+
+
+def refresh_graded_price(card_id, grade, force=False, conn=None):
+    """Price one (card, grade) from comps, falling back to our own sold log.
+
+    Returns the stored row, or None when there is nothing trustworthy. Shared
+    across users: one refresh serves everyone holding that card at that grade.
+    """
+    c = conn or db()
+    today = date.today()
+    if not force:
+        row = c.execute("""SELECT * FROM graded_prices WHERE card_id=%s AND grade=%s
+                           ORDER BY day DESC LIMIT 1""", (card_id, grade)).fetchone()
+        if row and (today - row["day"]).days < GRADED_TTL_DAYS:
+            return row
+
+    card = c.execute("SELECT id,name,set_name,local_id FROM cards WHERE id=%s",
+                     (card_id,)).fetchone()
+    agg = None
+    if card:
+        vals = [_to_gbp(x["price"], x["currency"]) for x in fetch_comps(dict(card))
+                if grade_from_title(x["title"]) == grade]
+        if len(vals) >= GRADED_MIN_SAMPLES:
+            agg = {"gbp": round(_median(vals), 2), "samples": len(vals),
+                   "low": round(min(vals), 2), "high": round(max(vals), 2),
+                   "source": "ebay-comps"}
+    if agg is None:
+        agg = crowd_graded_price(card_id, grade, c)
+    if agg is None:
+        return None
+
+    c.execute("""INSERT INTO graded_prices (card_id,grade,day,gbp,low,high,samples,source,fetched)
+                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,now())
+                 ON CONFLICT (card_id,grade,day) DO UPDATE SET
+                   gbp=EXCLUDED.gbp, low=EXCLUDED.low, high=EXCLUDED.high,
+                   samples=EXCLUDED.samples, source=EXCLUDED.source, fetched=now()""",
+              (card_id, grade, today, agg["gbp"], agg["low"], agg["high"],
+               agg["samples"], agg["source"]))
+    if conn is None:
+        c.commit()
+    return c.execute("""SELECT * FROM graded_prices WHERE card_id=%s AND grade=%s
+                        AND day=%s""", (card_id, grade, today)).fetchone()
+
+
+def graded_price(card_id, grade, conn=None):
+    """Latest stored graded price, or None. Never fetches — read path only."""
+    if not grade:
+        return None
+    c = conn or db()
+    row = c.execute("""SELECT * FROM graded_prices WHERE card_id=%s AND grade=%s
+                       AND samples >= %s ORDER BY day DESC LIMIT 1""",
+                    (card_id, grade, GRADED_MIN_SAMPLES)).fetchone()
+    return dict(row) if row else None
+
+
+def refresh_graded_all(conn, limit=200):
+    """Weekly sweep of every (card, grade) anyone actually holds.
+
+    Weekly rather than daily: comps move slowly, the feed is rate-limited, and
+    CLAUDE.md's plan is graded weekly for free accounts and daily for paid.
+    """
+    # Ordered so a truncated sweep resumes predictably rather than re-rolling
+    # which cards get looked up.
+    rows = conn.execute("""SELECT DISTINCT card_id, grade FROM holdings
+                           WHERE grade <> '' AND grade IS NOT NULL
+                           ORDER BY card_id, grade LIMIT %s""", (limit,)).fetchall()
+    n = 0
+    for r in rows:
+        try:
+            if refresh_graded_price(r["card_id"], r["grade"], conn=conn):
+                n += 1
+        except Exception:
+            pass                     # one bad card must not stop the sweep
+        conn.commit()
+        time.sleep(0.25)
+    return n
+
+
+# ---------------------------------------------------------------- grading ROI
+#
+# "Is this worth sending off?" was unanswerable while every graded card was
+# priced as raw. With comps in the database it is arithmetic — but arithmetic
+# with a real unknown in it, because you do not know what grade it will come
+# back as. So this never quotes a single number: it shows what each achievable
+# grade would be worth net of costs, and leaves the gamble visible.
+#
+# The fees below are DEFAULTS AND ESTIMATES, not quotes. Grading companies
+# change pricing and tiers regularly and there is no free feed for them, so
+# every figure is env-overridable and the page says plainly that they need
+# checking against the grader's current card.
+
+GRADING_FEE_TIERS = [
+    # (label, declared value ceiling GBP, fee per card GBP)
+    ("Value",   199.0,  20.0),
+    ("Regular", 499.0,  30.0),
+    ("Express", 1499.0, 75.0),
+    ("Premium", 2499.0, 150.0),
+]
+GRADING_POSTAGE = float(os.environ.get("GRADING_POSTAGE", "25"))   # insured, round trip
+GRADING_BATCH = int(os.environ.get("GRADING_BATCH", "10"))         # cards per submission
+GRADING_MIN_UPLIFT = float(os.environ.get("GRADING_MIN_UPLIFT", "10"))
+
+
+def grading_fee(declared):
+    """Per-card fee for a declared value, plus its share of one submission's postage."""
+    for label, ceiling, fee in GRADING_FEE_TIERS:
+        if declared <= ceiling:
+            return label, fee + GRADING_POSTAGE / max(1, GRADING_BATCH)
+    label, _, fee = GRADING_FEE_TIERS[-1]
+    return label, fee + GRADING_POSTAGE / max(1, GRADING_BATCH)
+
+
+def grading_roi(card_id, raw_price, conn=None):
+    """What each gradeable outcome would be worth, net of fees.
+
+    Returns one row per grade we have real comps for, best first. Empty when
+    there are none — an ROI computed from a guessed graded price would be the
+    same confident-and-wrong failure the rest of this codebase avoids.
+    """
+    if not raw_price or raw_price <= 0:
+        return []
+    c = conn or db()
+    rows = c.execute("""SELECT DISTINCT ON (grade) grade, gbp, samples, source, day
+                        FROM graded_prices
+                        WHERE card_id=%s AND samples >= %s
+                        ORDER BY grade, day DESC""",
+                     (card_id, GRADED_MIN_SAMPLES)).fetchall()
+    out = []
+    for r in rows:
+        tier, cost = grading_fee(r["gbp"])
+        net = round(r["gbp"] - raw_price - cost, 2)
+        out.append({
+            "grade": r["grade"], "graded": r["gbp"], "samples": r["samples"],
+            "source": r["source"], "tier": tier, "cost": round(cost, 2),
+            "net": net, "multiple": round(r["gbp"] / raw_price, 1),
+            "worth_it": net >= GRADING_MIN_UPLIFT,
+        })
+    out.sort(key=lambda x: -x["net"])
+    return out
+
+
+def grading_candidates(user_id, conn=None):
+    """Raw holdings that look worth grading, best uplift first.
+
+    Only raw copies: a card already in a slab is not a candidate, and the
+    holdings unique key means the raw and graded copies are separate rows.
+    """
+    c = conn or db()
+    out = []
+    for h in holdings_with_prices(user_id, c):
+        if h["grade"] or h["price_basis"] != "raw" or not h["price"]:
+            continue
+        roi = grading_roi(h["id"], h["price"], c)
+        best = next((r for r in roi if r["worth_it"]), None)
+        if best:
+            out.append({**h, "roi": roi, "best": best})
+    out.sort(key=lambda x: -x["best"]["net"])
+    return out
+
+
 # -------------------------------------------------------------------- portfolio
 
 
@@ -449,7 +886,22 @@ def holdings_with_prices(user_id, conn=None):
         hist = c.execute("SELECT day, gbp FROM prices WHERE card_id=%s ORDER BY day DESC LIMIT 31",
                          (r["id"],)).fetchall()
         hist = [{"day": h["day"].isoformat(), "gbp": h["gbp"]} for h in hist]
-        latest = d["manual_gbp"] if d["manual_gbp"] is not None else (hist[0]["gbp"] if hist else None)
+        raw = hist[0]["gbp"] if hist else None
+
+        # A graded card is not worth what a raw one is. price_basis says which
+        # number this is, so the UI can stop claiming a PSA 10 is worth raw
+        # money and can show when it is falling back.
+        g = graded_price(d["id"], d["grade"], c) if d["grade"] else None
+        if d["manual_gbp"] is not None:
+            latest, d["price_basis"] = d["manual_gbp"], "manual"
+        elif g:
+            latest, d["price_basis"] = g["gbp"], "graded"
+            d["graded"] = {"samples": g["samples"], "source": g["source"],
+                           "low": g["low"], "high": g["high"], "raw": raw}
+        elif d["grade"]:
+            latest, d["price_basis"] = raw, "raw-fallback"
+        else:
+            latest, d["price_basis"] = raw, "raw"
         d["price"] = latest
         d["value"] = (latest or 0) * d["qty"]
         d["history"] = list(reversed(hist))
@@ -461,12 +913,40 @@ def holdings_with_prices(user_id, conn=None):
                 if h["day"] <= target:
                     return h["gbp"]
             return None
-        d["chg1"] = pct(latest, ago(1)) if d["manual_gbp"] is None else None
-        d["chg7"] = pct(latest, ago(7)) if d["manual_gbp"] is None else None
-        d["chg30"] = pct(latest, ago(30)) if d["manual_gbp"] is None else None
+        # Only the raw series belongs to this number. A graded price moves on a
+        # different clock and a manual one does not move at all, so neither gets
+        # a change figure rather than being handed the raw card's.
+        movable = d["price_basis"] == "raw"
+        d["chg1"] = pct(latest, ago(1)) if movable else None
+        d["chg7"] = pct(latest, ago(7)) if movable else None
+        d["chg30"] = pct(latest, ago(30)) if movable else None
         with_images(d)
         out.append(d)
     out.sort(key=lambda x: -(x["value"] or 0))
+    return out
+
+
+def custom_with_values(user_id, conn=None):
+    """Manually tracked things: sealed product, and cards no API can price.
+
+    Shaped like a holding so the portfolio can treat both the same way. There
+    is no market price by definition, so `value` is whatever the owner said it
+    was and price_basis is always 'manual'.
+    """
+    c = conn or db()
+    rows = c.execute("""SELECT * FROM custom_items WHERE user_id=%s
+                        ORDER BY (value * qty) DESC NULLS LAST, id""", (user_id,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["qty"] = d.get("qty") or 1
+        d["price"] = d.get("value")
+        d["value"] = (d.get("value") or 0) * d["qty"]
+        d["price_basis"] = "manual"
+        d["custom"] = True
+        d["added"] = d["added"].isoformat() if d.get("added") else None
+        d["chg1"] = d["chg7"] = d["chg30"] = None
+        out.append(d)
     return out
 
 
@@ -491,17 +971,23 @@ def ensure_snapshot(user_id, conn=None, force=False):
                                (user_id, today)).fetchone():
         return
     hs = holdings_with_prices(user_id, c)
-    total = round(sum(h["value"] for h in hs), 2)
+    customs = custom_with_values(user_id, c)
+    total = round(sum(h["value"] for h in hs) + sum(x["value"] for x in customs), 2)
     c.execute("""INSERT INTO snapshots (user_id,day,total,cards) VALUES (%s,%s,%s,%s)
                  ON CONFLICT (user_id, day) DO UPDATE SET total=EXCLUDED.total, cards=EXCLUDED.cards""",
-              (user_id, today, total, sum(h["qty"] for h in hs)))
+              (user_id, today, total,
+               sum(h["qty"] for h in hs) + sum(x["qty"] for x in customs)))
     c.commit()
 
 
 def stats(user_id):
     hs = holdings_with_prices(user_id)
-    total = round(sum(h["value"] for h in hs), 2)
-    cost = round(sum((h["paid"] or 0) * h["qty"] for h in hs if h["paid"]), 2)
+    # Manually tracked things are part of the collection. Leaving them out is
+    # how a GBP200 card that TCGdex cannot price reads as nothing at all.
+    customs = custom_with_values(user_id)
+    total = round(sum(h["value"] for h in hs) + sum(x["value"] for x in customs), 2)
+    cost = round(sum((h["paid"] or 0) * h["qty"] for h in hs if h["paid"])
+                 + sum((x["paid"] or 0) * x["qty"] for x in customs if x["paid"]), 2)
     snaps = db().execute("SELECT day,total FROM snapshots WHERE user_id=%s ORDER BY day DESC LIMIT 90",
                          (user_id,)).fetchall()
     series = [{"day": s["day"].isoformat(), "total": s["total"]} for s in reversed(snaps)]
@@ -550,11 +1036,14 @@ def stats(user_id):
         "ath": ath, "atl": atl,
         "drawdown": pct(total, ath["total"]) if ath else None,
         "pnl": {"abs": round(total - cost, 2), "pct": pct(total, cost)} if cost else None,
-        "cards": sum(h["qty"] for h in hs), "unique": len(hs),
+        "cards": sum(h["qty"] for h in hs) + sum(x["qty"] for x in customs),
+        "unique": len(hs) + len(customs), "customs": customs,
         "chg1": chg(1), "chg7": chg(7), "chg30": chg(30),
         "series": series, "sets": sets, "rarity": rarity,
         "top": hs[:5], "gainers": gainers, "losers": losers,
-        "avg_card": round(total / sum(h["qty"] for h in hs), 2) if hs else 0,
+        "avg_card": round(total / (sum(h["qty"] for h in hs)
+                                    + sum(x["qty"] for x in customs)), 2)
+                     if (hs or customs) else 0,
     }
 
 # ------------------------------------------------------------------------ pages
@@ -606,6 +1095,7 @@ def card_page(hid):
         abort(404)
     u = db().execute("SELECT ntfy_topic, discord_webhook FROM users WHERE id=%s", (uid(),)).fetchone()
     h["detail"] = card_detail(h["id"])
+    h["roi"] = (grading_roi(h["id"], h["price"]) if not h["grade"] else [])
     return render_template("card.html", c=h, alerts=user_alerts(uid(), h["id"]),
                            has_notify=bool(u["ntfy_topic"] or u["discord_webhook"]), page="cards")
 
@@ -1083,10 +1573,11 @@ def api_sales():
     if not row:
         return jsonify(error="Holding not found."), 404
     qty = max(1, min(int(d.get("qty") or 1), row["qty"]))
-    db().execute("""INSERT INTO sales (user_id,card_id,qty,sold,paid,sold_on,venue,note)
-                    VALUES (%s,%s,%s,%s,%s,COALESCE(%s,CURRENT_DATE),%s,%s)""",
+    db().execute("""INSERT INTO sales (user_id,card_id,qty,sold,paid,sold_on,venue,note,grade)
+                    VALUES (%s,%s,%s,%s,%s,COALESCE(%s,CURRENT_DATE),%s,%s,%s)""",
                  (uid(), row["card_id"], qty, float(d.get("sold") or 0),
-                  row["paid"], d.get("sold_on") or None, d.get("venue"), d.get("note")))
+                  row["paid"], d.get("sold_on") or None, d.get("venue"), d.get("note"),
+                  row["grade"] or None))
     if qty >= row["qty"]:
         db().execute("DELETE FROM holdings WHERE id=%s", (hid,))
     else:
@@ -1257,6 +1748,8 @@ PAGES = {
     "/sets":      ("All sets",     "/market"),
     "/sold":      ("Sold",         "/profile"),
     "/import":    ("Import cards", "/profile"),
+    "/manual":    ("Manual entries", "/profile"),
+    "/grading":   ("Worth grading?", "/"),
     "/stats":     ("Admin",        "/profile"),
     "/compare":   ("Compare",      "/market"),
     "/add":       ("Add a card",   "/"),
@@ -1344,7 +1837,7 @@ def manifest():
         "description": "Pok\u00e9mon card portfolio tracker",
         "start_url": "/", "scope": "/",
         "display": "standalone", "orientation": "portrait",
-        "background_color": "#0b0d12", "theme_color": "#0b0d12",
+        "background_color": "#0d0907", "theme_color": "#0d0907",
         "icons": [
             {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
             {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable"},
@@ -1356,9 +1849,9 @@ def manifest():
 def icon():
     svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
 <defs><linearGradient id="h" x1="0" y1="0" x2="1" y2="1">
-<stop offset="0" stop-color="#7ae2ff"/><stop offset=".5" stop-color="#c9a6ff"/>
-<stop offset="1" stop-color="#ffce78"/></linearGradient></defs>
-<rect width="512" height="512" rx="112" fill="#0b0d12"/>
+<stop offset="0" stop-color="#ff6a3d"/><stop offset=".5" stop-color="#ffa14d"/>
+<stop offset="1" stop-color="#ffd08a"/></linearGradient></defs>
+<rect width="512" height="512" rx="112" fill="#0d0907"/>
 <rect x="150" y="104" width="212" height="296" rx="20" fill="none"
       stroke="url(#h)" stroke-width="20"/>
 <path d="M196 300 L242 236 L286 274 L330 196" fill="none" stroke="url(#h)"
@@ -1504,66 +1997,570 @@ def compare_page():
 
 
 # ---------------------------------------------------------------- bulk import
+#
+# Rewritten after a real 143-row Collectr export matched the right *printing*
+# for only 104 of them. Almost every miss came from throwing information away:
+# the set column was ignored, the collector number was dropped whenever it had
+# a slash or a letter, and a Chinese card with no English release was quietly
+# attached to whatever English card shared its name.
+
+# Collectr appends variant labels TCGdex does not index. "Meowth (Master Ball
+# Pattern) (CN)" finds nothing; "Meowth" finds it. The labels are still real
+# information, so they are kept rather than discarded.
+REGION_TAGS = {"jp": "jp", "japanese": "jp", "cn": "cn", "chinese": "cn",
+               "kr": "kr", "korean": "kr"}
+
+# Regions TCGdex actually serves. Anything tagged with a region outside this
+# map is reported unmatched rather than looked up in English.
+TCGDEX_LANGS = {"jp": "ja"}
+NO_DATA_FOR = {
+    "cn": "Chinese card — TCGdex has no Chinese data",
+    "kr": "Korean card — TCGdex has no Korean data",
+}
+
+# Everything before the slash, verbatim. Zero padding is significant: TCGdex
+# uses "072" for SV-era sets and "44" for older ones, so normalising either way
+# breaks the match. Letter prefixes (TG/GG/SV/SWSH) and trailing letters (84a)
+# are part of the number.
+_NUM_RE = re.compile(r"^\s*([A-Za-z]{0,4}\d{1,4}[A-Za-z]?)\s*$")
+
+
+def split_variant(raw_name):
+    """'Meowth (Master Ball Pattern) (CN)' -> ('Meowth', 'Master Ball Pattern', 'cn').
+
+    Returns (lookup_name, variant_label, region). The lookup name is what goes
+    to TCGdex; the label is kept so the holding can show what it actually is.
+    """
+    name = (raw_name or "").strip()
+    parens = re.findall(r"\(([^()]*)\)", name)
+    region = None
+    labels = []
+    for p in parens:
+        tag = p.strip().lower()
+        if tag in REGION_TAGS:
+            region = REGION_TAGS[tag]
+        elif p.strip():
+            labels.append(p.strip())
+    plain = re.sub(r"\s*\([^()]*\)", "", name).strip()
+    plain = re.sub(r"\s{2,}", " ", plain)
+    return (plain or name), (" · ".join(labels) or None), region
+
+
+def parse_number(raw):
+    """'072/080' -> '072'. 'TG06/TG30' -> 'TG06'. 'SWSH153' -> 'SWSH153'.
+
+    None when the field is not a collector number at all — Gem Pack's '0205/07'
+    parses to '0205', which is deliberate: it is preserved for display even
+    though no English set uses it.
+    """
+    if raw is None:
+        return None
+    head = str(raw).split("/")[0].strip()
+    head = head.lstrip("#").strip()
+    m = _NUM_RE.match(head)
+    return m.group(1) if m else None
+
+
+def parse_grade(condition):
+    """'PSA 10 (GEM-MT)' -> ('PSA 10', None). 'Near Mint' -> (None, 'Near Mint').
+
+    A graded card is a different holding from a raw one — holdings is unique on
+    (user_id, card_id, grade) precisely so both can be held — so the grade has
+    to come out of the free-text condition field or the two silently merge.
+    """
+    c = (condition or "").strip()
+    if not c:
+        return None, None
+    m = _GRADE_RE.search(c)
+    if not m:
+        return None, c
+    num = m.group(2)
+    if num.endswith(".0"):
+        num = num[:-2]
+    return f"{m.group(1).upper()} {num}", None
+
+
+# Column names that unambiguously mean "what I paid". Collectr's price column is
+# collectr_price_gbp — current market value, not cost — and importing that as
+# cost basis makes every card show zero gain forever, so anything that only
+# means "price" is treated as market value instead.
+PAID_HEADERS = {"paid", "cost", "purchase price", "purchase_price", "price paid",
+                "price_paid", "paid_gbp", "paid gbp", "cost basis", "cost_basis",
+                "bought for", "acquired for", "buy price", "buy_price"}
+MARKET_HEADERS = {"price", "value", "market", "market price", "market_price",
+                  "collectr_price_gbp", "collectr price gbp", "current price",
+                  "current_value", "market value", "market_value", "price_gbp",
+                  "price gbp", "tcg price", "tcgplayer price"}
+HEADER_ALIASES = {
+    "name": "name", "card": "name", "card name": "name", "cardname": "name",
+    "set": "set", "set name": "set", "expansion": "set", "series": "set",
+    "number": "number", "card number": "number", "collector number": "number",
+    "no": "number", "num": "number", "#": "number",
+    "qty": "qty", "quantity": "qty", "count": "qty", "amount": "qty",
+    "condition": "condition", "grade": "condition", "cond": "condition",
+    "finish": "finish", "printing": "finish", "variant": "finish",
+    "foil": "finish", "rarity": "rarity", "notes": "notes", "note": "notes",
+    "language": "region", "lang": "region", "region": "region",
+}
+
+
+def map_headers(cells):
+    """Map a header row to canonical field names, or return None if it isn't one.
+
+    A row is a header when enough of its cells are recognisable field names and
+    none of them look like data.
+    """
+    mapped, hits = {}, 0
+    for i, cell in enumerate(cells):
+        key = re.sub(r"\s+", " ", (cell or "").strip().lower()).strip(" _-")
+        if not key:
+            continue
+        if key in HEADER_ALIASES:
+            mapped[i] = HEADER_ALIASES[key]; hits += 1
+        elif key in PAID_HEADERS:
+            mapped[i] = "paid"; hits += 1
+        elif key in MARKET_HEADERS:
+            mapped[i] = "market"; hits += 1
+        else:
+            mapped[i] = None
+    # "name" alone is not enough — a card literally called "Set" would qualify.
+    return mapped if hits >= 3 and "name" in mapped.values() else None
+
+
+def sniff_rows(text):
+    """Split a paste into cells. Handles comma and tab, and quoted fields.
+
+    The old hand-rolled regex could not see a quoted comma inside a card name;
+    csv can, and it is in the standard library.
+    """
+    lines = [l for l in (text or "").splitlines() if l.strip()]
+    if not lines:
+        return []
+    sample = "\n".join(lines[:20])
+    delim = "\t" if sample.count("\t") > sample.count(",") else ","
+    out = []
+    for row in csv.reader(lines, delimiter=delim, skipinitialspace=True):
+        cells = [c.strip() for c in row]
+        if any(cells):
+            out.append(cells)
+    return out
+
+
+def parse_import(text):
+    """Text in, staged rows out. No network, so this is safe inside a request.
+
+    Returns (rows, columns) where columns is the resolved header map (or None
+    for a headerless paste, which falls back to positional parsing).
+    """
+    grid = sniff_rows(text)
+    if not grid:
+        return [], None
+    cols = map_headers(grid[0])
+    body = grid[1:] if cols else grid
+    named = {v: k for k, v in (cols or {}).items() if v}
+
+    rows = []
+    for n, cells in enumerate(body, start=1):
+        def col(field):
+            i = named.get(field)
+            return cells[i].strip() if i is not None and i < len(cells) and cells[i] else None
+
+        if cols:
+            raw_name = col("name")
+            set_name, number = col("set"), col("number")
+            condition, finish = col("condition"), col("finish")
+            qty_s, paid_s, market_s = col("qty"), col("paid"), col("market")
+            region_s = col("region")
+        else:
+            # Headerless: "2, Umbreon ex, PRE, 161". A leading integer is a
+            # quantity; everything else is positional and deliberately cautious.
+            parts = [c for c in cells if c]
+            if not parts:
+                continue
+            qty_s = None
+            if parts[0].isdigit() and len(parts) > 1:
+                qty_s, parts = parts[0], parts[1:]
+            raw_name = parts[0] if parts else None
+            rest = parts[1:]
+            number = next((p for p in rest if parse_number(p)), None)
+            set_name = next((p for p in rest
+                             if p != number and not parse_number(p)
+                             and not re.fullmatch(r"[£$]?[\d.,]+", p)), None)
+            condition = finish = region_s = None
+            # A bare number in a headerless paste is NOT assumed to be cost.
+            paid_s, market_s = None, None
+        if not raw_name:
+            continue
+
+        name, variant, region = split_variant(raw_name)
+        grade, condition_out = parse_grade(condition)
+        if not region and region_s:
+            region = REGION_TAGS.get(region_s.strip().lower())
+
+        def money(v):
+            if not v:
+                return None
+            try:
+                return round(float(re.sub(r"[^\d.\-]", "", v)), 2)
+            except ValueError:
+                return None
+
+        try:
+            qty = max(1, int(re.sub(r"[^\d]", "", qty_s or "1") or 1))
+        except ValueError:
+            qty = 1
+
+        rows.append({
+            "n": n, "raw": cells, "name": name, "variant": variant,
+            "set_name": set_name, "number": parse_number(number),
+            "region": region, "qty": qty,
+            "paid": money(paid_s), "market": money(market_s),
+            "condition": condition_out, "grade": grade, "finish": finish,
+        })
+    return rows, cols
+
+
+
+
+# ---- resolution ----------------------------------------------------------
+
+def _norm_set(v):
+    return re.sub(r"[^a-z0-9]", "", (v or "").lower())
+
+
+_SET_BY_NAME = None
+_SET_BY_ABBR = None
+
+
+def _set_index():
+    """name -> set_id and abbr -> set_id, built once from sets.json."""
+    global _SET_BY_NAME, _SET_BY_ABBR
+    if _SET_BY_NAME is None:
+        _SET_BY_NAME, _SET_BY_ABBR = {}, {}
+        for sid, meta in SETS.items():
+            n = _norm_set(meta.get("name"))
+            if n:
+                _SET_BY_NAME.setdefault(n, sid)
+            a = _norm_set(meta.get("abbr"))
+            if a:
+                _SET_BY_ABBR.setdefault(a, sid)
+    return _SET_BY_NAME, _SET_BY_ABBR
+
+
+def resolve_set(set_name):
+    """Set name or abbreviation -> TCGdex set id, or None.
+
+    Ignoring this column is why 37 rows landed on the right Pokemon in the
+    wrong set: a Scarlet & Violet Base card resolving to a Prize Pack reprint.
+    """
+    if not set_name:
+        return None
+    key = _norm_set(set_name)
+    if not key:
+        return None
+    by_name, by_abbr = _set_index()
+    if key in by_name:
+        return by_name[key]
+    if key in by_abbr:
+        return by_abbr[key]
+    # "Scarlet & Violet Base Set" vs "Scarlet & Violet"; prefer the longest
+    # unambiguous prefix match so a short name cannot swallow a longer one.
+    cands = [sid for n, sid in by_name.items() if key.startswith(n) or n.startswith(key)]
+    if len(set(cands)) == 1:
+        return cands[0]
+    return None
+
+
+def tcgdex_lang(lang, path, **params):
+    """TCGdex in a specific language. Japanese cards genuinely live under /ja."""
+    try:
+        r = requests.get(f"https://api.tcgdex.net/v2/{lang}/{path}",
+                         params=params, timeout=12)
+        if r.status_code == 200:
+            return r.json()
+    except requests.RequestException:
+        pass
+    return None
+
+
+def _candidates(name, lang):
+    res = (tcgdex("cards", name=name) if lang == "en"
+           else tcgdex_lang(lang, "cards", name=name)) or []
+    return [c for c in res
+            if set_meta(c["id"].rsplit("-", 1)[0]).get("serie") not in DIGITAL_SERIES]
+
+
+def resolve_row(row):
+    """Fill in card_id / set_id / confidence for one staged row.
+
+    confidence is one of:
+      exact      set and number both matched
+      set        set matched, number did not
+      number     number matched inside an unresolved set
+      name       name only — the printing is a guess
+      unmatched  nothing safe to attach
+
+    The hard rule is at the top: a row tagged JP or CN never falls back to an
+    English card. Silently pricing a GBP200 Chinese Cubone as a common English
+    one is worse than reporting it unmatched, because it looks confident.
+    """
+    name, number = row.get("name"), row.get("number")
+    region = row.get("region")
+    want_set = resolve_set(row.get("set_name"))
+
+    # A region we have no endpoint for can only produce a wrong answer, so it
+    # stops here. Falling back to English for a JP/CN row is the failure this
+    # rewrite exists to remove: a confident wrong match is worse than none.
+    if region and region not in TCGDEX_LANGS:
+        return None, want_set, "unmatched", NO_DATA_FOR.get(
+            region, f"No TCGdex data for {region.upper()} cards")
+    lang = TCGDEX_LANGS.get(region, "en")
+
+    pool = _candidates(name, lang)
+    if not pool and lang == "ja":
+        return None, want_set, "unmatched", "Not found in TCGdex Japanese data"
+    if not pool:
+        return None, want_set, "unmatched", "Not found in TCGdex"
+
+    in_set = [c for c in pool if c["id"].rsplit("-", 1)[0] == want_set] if want_set else []
+    scope = in_set or pool
+
+    exact_n = [c for c in scope if number and str(c.get("localId")) == str(number)]
+
+    if in_set and exact_n:
+        return exact_n[0]["id"], want_set, "exact", None
+    if in_set:
+        note = "Set matched, collector number did not" if number else None
+        return in_set[0]["id"], want_set, "set", note
+    if want_set:
+        # The set resolved but holds no card of that name — trusting the name
+        # here is exactly the bug that produced the Prize Pack reprints.
+        return None, want_set, "unmatched", "Not in the set named on the row"
+    if exact_n:
+        c = exact_n[0]
+        return c["id"], c["id"].rsplit("-", 1)[0], "number", "Set not recognised; matched on number"
+    pool.sort(key=lambda c: rank_key({"name": c.get("name"),
+                                      "set_id": c["id"].rsplit("-", 1)[0]}, name.lower()))
+    c = pool[0]
+    return c["id"], c["id"].rsplit("-", 1)[0], "name", "Printing is a guess — set not recognised"
+
+
+def run_import_job(job_id, user_id):
+    """Resolve every staged row. Runs on its own thread with its own connection.
+
+    Never touches flask.g: that is request-scoped and this outlives the request.
+    """
+    try:
+        with raw_db() as c:
+            rows = c.execute(
+                "SELECT * FROM import_rows WHERE job_id=%s ORDER BY n", (job_id,)).fetchall()
+            for i, r in enumerate(rows, start=1):
+                try:
+                    cid, sid, conf, note = resolve_row(dict(r))
+                except Exception as e:                      # one bad row must not kill the job
+                    cid, sid, conf, note = None, None, "unmatched", f"Lookup failed: {e}"
+                if cid:
+                    full = tcgdex(f"cards/{cid}")
+                    if full:
+                        upsert_card(full, c)
+                        refresh_price(cid, conn=c)
+                c.execute("""UPDATE import_rows SET card_id=%s, set_id=%s,
+                             confidence=%s, note=%s WHERE id=%s""",
+                          (cid, sid, conf, note, r["id"]))
+                c.execute("UPDATE import_jobs SET done=%s WHERE id=%s", (i, job_id))
+                c.commit()
+            c.execute("UPDATE import_jobs SET state='review', finished=now() WHERE id=%s",
+                      (job_id,))
+            c.commit()
+    except Exception as e:
+        try:
+            with raw_db() as c:
+                c.execute("UPDATE import_jobs SET state='failed', error=%s WHERE id=%s",
+                          (str(e)[:500], job_id))
+                c.commit()
+        except Exception:
+            pass
 
 
 @app.route("/import", methods=["GET", "POST"])
 @login_required
 def import_page():
+    """Step one: parse the paste and stage it. Returns as soon as it is stored.
+
+    Parsing is pure string work, so it finishes inside the request. Resolution
+    is one network round trip per row and moves to a background thread; the
+    page polls /api/import/<id> for progress and then shows the review table.
+    """
     if request.method == "GET":
         return render_template("import.html", page="you")
 
     text = (request.get_json(force=True) or {}).get("text", "")
-    rows, added, failed = [], 0, []
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.lower().startswith(("name,", "quantity,", "card name")):
-            continue
-        parts = [p.strip() for p in re.split(r"\t|,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", line)]
-        parts = [p.strip('"') for p in parts if p != ""]
-        if not parts:
-            continue
-        rows.append(parts)
+    rows, cols = parse_import(text)
+    if not rows:
+        return jsonify(error="Nothing to import — check the paste."), 400
+    if len(rows) > 2000:
+        return jsonify(error=f"{len(rows):,} rows is too many for one go. "
+                             "Split it into batches of 2,000."), 400
 
-    for parts in rows[:300]:
-        qty, paid, name, number = 1, None, parts[0], None
-        if parts[0].isdigit() and len(parts) > 1:      # "2, Umbreon ex, PRE, 161"
-            qty, name = int(parts[0]), parts[1]
-            parts = parts[1:]
-        for p in parts[1:]:
-            if re.fullmatch(r"\d+", p) and number is None:
-                number = p
-            elif re.fullmatch(r"[\u00a3$]?\d+(\.\d{1,2})?", p) and paid is None:
-                paid = float(p.lstrip("\u00a3$"))
+    job = db().execute("""INSERT INTO import_jobs (user_id, state, total, columns)
+                          VALUES (%s,'resolving',%s,%s) RETURNING id""",
+                       (uid(), len(rows),
+                        Json({str(k): v for k, v in (cols or {}).items()}))).fetchone()["id"]
+    for r in rows:
+        db().execute("""INSERT INTO import_rows
+            (job_id,n,raw,name,variant,set_name,number,region,qty,paid,market,
+             condition,grade,finish)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (job, r["n"], Json(r["raw"]), r["name"], r["variant"], r["set_name"],
+             r["number"], r["region"], r["qty"], r["paid"], r["market"],
+             r["condition"], r["grade"], r["finish"]))
+    db().commit()
+    log_event("import_staged", job=job, rows=len(rows), headers=bool(cols))
 
-        res = tcgdex("cards", name=name) or []
-        pool = [c for c in res
-                if set_meta(c["id"].rsplit("-", 1)[0]).get("serie") not in DIGITAL_SERIES]
-        if number:
-            pool = [c for c in pool if str(c.get("localId")) == number] or pool
-        if not pool:
-            failed.append(name)
+    threading.Thread(target=run_import_job, args=(job, uid()), daemon=True).start()
+    return jsonify(job=job, total=len(rows), headers=bool(cols))
+
+
+def _job_or_404(job_id):
+    j = db().execute("SELECT * FROM import_jobs WHERE id=%s AND user_id=%s",
+                     (job_id, uid())).fetchone()
+    if not j:
+        abort(404)
+    return j
+
+
+@app.route("/api/import/<int:job_id>")
+@login_required
+def api_import_status(job_id):
+    """Progress while resolving, and the whole review table once it is done."""
+    j = _job_or_404(job_id)
+    out = {"state": j["state"], "done": j["done"], "total": j["total"],
+           "error": j["error"], "paid_column": j["paid_column"]}
+    if j["state"] not in ("review", "done"):
+        return jsonify(out)
+
+    rows = db().execute("""
+        SELECT r.*, c.name AS matched_name, c.set_name AS matched_set,
+               c.local_id AS matched_number,
+               (SELECT gbp FROM prices p WHERE p.card_id=r.card_id
+                 ORDER BY day DESC LIMIT 1) AS price
+        FROM import_rows r LEFT JOIN cards c ON c.id=r.card_id
+        WHERE r.job_id=%s ORDER BY r.n""", (job_id,)).fetchall()
+    out["rows"] = [{
+        "id": r["id"], "n": r["n"], "name": r["name"], "variant": r["variant"],
+        "set_name": r["set_name"], "number": r["number"], "region": r["region"],
+        "qty": r["qty"], "paid": r["paid"], "market": r["market"],
+        "condition": r["condition"], "grade": r["grade"], "finish": r["finish"],
+        "card_id": r["card_id"], "confidence": r["confidence"], "note": r["note"],
+        "skip": r["skip"], "matched_name": r["matched_name"],
+        "matched_set": r["matched_set"], "matched_number": r["matched_number"],
+        "price": r["price"],
+    } for r in rows]
+    out["counts"] = {k: sum(1 for r in rows if r["confidence"] == k)
+                     for k in ("exact", "set", "number", "name", "unmatched")}
+    out["graded"] = sum(1 for r in rows if r["grade"])
+    return jsonify(out)
+
+
+@app.route("/api/import/<int:job_id>/rows", methods=["PATCH"])
+@login_required
+def api_import_edit(job_id):
+    """Edit the review table before committing: drop rows, or fix what is wrong."""
+    _job_or_404(job_id)
+    d = request.get_json(force=True) or {}
+    edits = d.get("rows") or []
+    for e in edits:
+        rid = e.get("id")
+        if not rid:
             continue
-        pool.sort(key=lambda c: rank_key({"name": c.get("name"),
-                                          "set_id": c["id"].rsplit("-", 1)[0]}, name.lower()))
-        cid = pool[0]["id"]
-        full = tcgdex(f"cards/{cid}")
-        if full:
-            upsert_card(full)
-        # already own it? add to the pile rather than blowing up on the unique key
-        db().execute("""INSERT INTO holdings (user_id,card_id,qty,paid)
-                        VALUES (%s,%s,%s,%s)
-                        ON CONFLICT (user_id,card_id,grade) DO UPDATE
-                        SET qty = holdings.qty + EXCLUDED.qty,
-                            paid = COALESCE(holdings.paid, EXCLUDED.paid)""",
-                     (uid(), cid, qty, paid))
+        own = db().execute("SELECT 1 FROM import_rows WHERE id=%s AND job_id=%s",
+                           (rid, job_id)).fetchone()
+        if not own:
+            continue
+        for field in ("skip", "qty", "paid", "grade", "condition", "finish"):
+            if field in e:
+                v = e[field]
+                if field == "skip":
+                    v = bool(v)
+                elif field == "qty":
+                    try:
+                        v = max(1, int(v))
+                    except (TypeError, ValueError):
+                        continue
+                elif field == "paid":
+                    try:
+                        v = None if v in (None, "") else round(float(v), 2)
+                    except (TypeError, ValueError):
+                        continue
+                db().execute(f"UPDATE import_rows SET {field}=%s WHERE id=%s", (v, rid))
+    db().commit()
+    return jsonify(ok=True)
+
+
+@app.route("/api/import/<int:job_id>/paid-column", methods=["POST"])
+@login_required
+def api_import_paid_column(job_id):
+    """Say which column is cost. Nothing is treated as cost unless asked.
+
+    Collectr's price column is current market value; importing it as cost basis
+    makes every card show zero gain forever, so it lands in `market` and only
+    moves to `paid` when someone explicitly says that column is what they paid.
+    """
+    _job_or_404(job_id)
+    which = (request.get_json(force=True) or {}).get("column")
+    if which not in ("market", "none"):
+        return jsonify(error="Unknown column"), 400
+    if which == "market":
+        db().execute("UPDATE import_rows SET paid=market WHERE job_id=%s AND market IS NOT NULL",
+                     (job_id,))
+    else:
+        db().execute("UPDATE import_rows SET paid=NULL WHERE job_id=%s", (job_id,))
+    db().execute("UPDATE import_jobs SET paid_column=%s WHERE id=%s", (which, job_id))
+    db().commit()
+    return jsonify(ok=True)
+
+
+@app.route("/api/import/<int:job_id>/commit", methods=["POST"])
+@login_required
+def api_import_commit(job_id):
+    """Step two: write the reviewed rows into holdings.
+
+    Only rows with a card_id and no skip flag are written. grade is passed
+    explicitly: holdings is unique on (user_id, card_id, grade), so leaving it
+    to the column default would collapse a PSA 10 into the raw copy.
+    """
+    j = _job_or_404(job_id)
+    if j["state"] not in ("review", "done"):
+        return jsonify(error="Still resolving — give it a moment."), 409
+
+    rows = db().execute("""SELECT * FROM import_rows WHERE job_id=%s
+                           AND skip=false AND card_id IS NOT NULL ORDER BY n""",
+                        (job_id,)).fetchall()
+    added = 0
+    for r in rows:
+        db().execute("""INSERT INTO holdings
+                (user_id,card_id,qty,paid,grade,condition,finish,region,variant)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (user_id,card_id,grade) DO UPDATE
+                SET qty = holdings.qty + EXCLUDED.qty,
+                    paid = COALESCE(holdings.paid, EXCLUDED.paid),
+                    condition = COALESCE(holdings.condition, EXCLUDED.condition),
+                    finish = COALESCE(holdings.finish, EXCLUDED.finish),
+                    region = COALESCE(holdings.region, EXCLUDED.region),
+                    variant = COALESCE(holdings.variant, EXCLUDED.variant)""",
+                     (uid(), r["card_id"], r["qty"], r["paid"], r["grade"] or "",
+                      r["condition"], r["finish"], r["region"], r["variant"]))
         added += 1
-        refresh_price(cid)
+    skipped = db().execute("""SELECT COUNT(*) n FROM import_rows WHERE job_id=%s
+                              AND (skip=true OR card_id IS NULL)""",
+                           (job_id,)).fetchone()["n"]
+    db().execute("UPDATE import_jobs SET state='done' WHERE id=%s", (job_id,))
     db().commit()
     if added:
         ensure_snapshot(uid(), db(), force=True)
         db().commit()
-    log_event("import", added=added, failed=len(failed), submitted=len(rows))
-    return jsonify(added=added, failed=failed[:20], total=len(rows))
+    log_event("import_committed", job=job_id, added=added, skipped=skipped)
+    return jsonify(ok=True, added=added, skipped=skipped)
 
 
 # ------------------------------------------------------------------ card scan
@@ -1650,23 +2647,122 @@ def api_scan():
 # --------------------------------------------------------------- sealed / misc
 
 
-@app.route("/api/custom", methods=["POST", "DELETE"])
+@app.route("/grading")
+@login_required
+def grading_page():
+    """Which raw cards are worth sending off, and what it would net."""
+    cands = grading_candidates(uid())
+    return render_template("grading.html", cands=cands,
+                           postage=GRADING_POSTAGE, batch=GRADING_BATCH,
+                           tiers=GRADING_FEE_TIERS, page="portfolio")
+
+
+@app.route("/manual")
+@login_required
+def manual_page():
+    """Everything Holo cannot price: sealed product, and cards no API carries."""
+    return render_template("manual.html", items=custom_with_values(uid()), page="you")
+
+
+def _custom_fields(d):
+    out = {}
+    for k in ("name", "kind", "note", "set_name", "number", "region",
+              "variant", "grade", "condition", "finish"):
+        if k in d:
+            v = (d.get(k) or "").strip() or None
+            out[k] = v
+    if "qty" in d:
+        try:
+            out["qty"] = max(1, int(d["qty"]))
+        except (TypeError, ValueError):
+            pass
+    for k in ("paid", "value"):
+        if k in d:
+            try:
+                out[k] = None if d[k] in (None, "") else round(float(d[k]), 2)
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
+@app.route("/api/custom", methods=["POST", "PATCH", "DELETE"])
 @login_required
 def api_custom():
     d = request.get_json(force=True) or {}
+
     if request.method == "DELETE":
         db().execute("DELETE FROM custom_items WHERE id=%s AND user_id=%s",
                      (d.get("id"), uid()))
         db().commit()
+        ensure_snapshot(uid(), db(), force=True)
+        db().commit()
         return jsonify(ok=True)
-    if not (d.get("name") or "").strip():
-        return jsonify(error="Name required"), 400
-    db().execute("""INSERT INTO custom_items (user_id,name,kind,qty,paid,value,note)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                 (uid(), d["name"].strip(), d.get("kind") or "sealed",
-                  int(d.get("qty") or 1), d.get("paid"), d.get("value"), d.get("note")))
+
+    if request.method == "PATCH":
+        iid = d.get("id")
+        own = db().execute("SELECT 1 FROM custom_items WHERE id=%s AND user_id=%s",
+                           (iid, uid())).fetchone()
+        if not own:
+            return jsonify(error="not yours"), 403
+        fields = _custom_fields(d)
+        for k, v in fields.items():
+            db().execute(f"UPDATE custom_items SET {k}=%s WHERE id=%s", (v, iid))
+        db().commit()
+        ensure_snapshot(uid(), db(), force=True)
+        db().commit()
+        return jsonify(ok=True)
+
+    fields = _custom_fields(d)
+    if not fields.get("name"):
+        return jsonify(error="Give it a name"), 400
+    cols = ["user_id"] + list(fields)
+    vals = [uid()] + [fields[k] for k in fields]
+    new_id = db().execute(
+        f"INSERT INTO custom_items ({','.join(cols)}) "
+        f"VALUES ({','.join(['%s'] * len(cols))}) RETURNING id", vals).fetchone()["id"]
     db().commit()
-    return jsonify(ok=True)
+    log_event("custom_added", item_kind=fields.get("kind"))
+    ensure_snapshot(uid(), db(), force=True)
+    db().commit()
+    return jsonify(ok=True, id=new_id)
+
+
+@app.route("/api/import/<int:job_id>/keep", methods=["POST"])
+@login_required
+def api_import_keep(job_id):
+    """Keep unmatched rows as manual entries instead of losing them.
+
+    Without this the honest "not found" is indistinguishable from deletion:
+    fourteen Chinese cards and the most valuable card in the collection would
+    be reported unmatched and then silently dropped on commit.
+    """
+    _job_or_404(job_id)
+    ids = (request.get_json(force=True) or {}).get("ids")
+    q = """SELECT * FROM import_rows WHERE job_id=%s AND card_id IS NULL AND skip=false"""
+    args = [job_id]
+    if ids:
+        q += " AND id = ANY(%s)"
+        args.append(list(ids))
+    rows = db().execute(q, args).fetchall()
+
+    kept = 0
+    for r in rows:
+        db().execute("""INSERT INTO custom_items
+            (user_id,name,kind,qty,paid,value,set_name,number,region,variant,
+             grade,condition,finish,note)
+            VALUES (%s,%s,'card',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (uid(), r["name"], r["qty"], r["paid"], r["market"], r["set_name"],
+             r["number"], r["region"], r["variant"], r["grade"], r["condition"],
+             r["finish"], "From import — no TCGdex match"))
+        db().execute("UPDATE import_rows SET skip=true, note=%s WHERE id=%s",
+                     ("Kept as a manual entry", r["id"]))
+        kept += 1
+    db().commit()
+    if kept:
+        ensure_snapshot(uid(), db(), force=True)
+        db().commit()
+    log_event("import_kept_manual", job=job_id, kept=kept)
+    return jsonify(ok=True, kept=kept)
 
 
 def log_event(kind, path=None, conn=None, **meta):
@@ -1780,6 +2876,8 @@ def refresh_all():
     """Refresh every held card once, then snapshot every user. Returns cards refreshed."""
     n = 0
     with raw_db() as c:
+        refresh_fx(c)          # before any pricing, so today's numbers use today's rate
+        c.commit()
         ids = [r["card_id"] for r in c.execute("SELECT DISTINCT card_id FROM holdings").fetchall()]
         for cid in ids:
             if refresh_price(cid, force=True, conn=c) is not None:
@@ -1787,6 +2885,7 @@ def refresh_all():
             time.sleep(0.2)
         c.commit()
         refresh_market(c)
+        refresh_graded_all(c)
         backfill_alt_images(c)
         fired = check_alerts(c)
         for u in c.execute("SELECT * FROM users").fetchall():

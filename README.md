@@ -21,6 +21,42 @@ Multi-user Pokémon card portfolio. Flask, Neon (Postgres), Render, Cloudflare. 
     pip install -r requirements.txt
     DATABASE_URL=postgresql://... SECRET_KEY=dev ENABLE_SCHEDULER=0 python3 app.py
 
+## Tests
+
+    pip install -r requirements-dev.txt
+    eval "$(scripts/pgtest.sh start)"     # throwaway Postgres, prints TEST_DATABASE_URL
+    pytest
+    scripts/pgtest.sh stop                # deletes the cluster
+
+The suite runs against a real Postgres rather than a stub, because most of what
+is worth testing here is a `WHERE user_id = %s` that either scopes a query or
+doesn't. `conftest.py` truncates every table between tests, so point
+`TEST_DATABASE_URL` at a throwaway database and never at anything real. It
+defaults to `postgresql://postgres@127.0.0.1:5433/holotest`, which is what
+`scripts/pgtest.sh` sets up.
+
+No test is allowed to reach the network. `conftest.py` replaces every
+`requests` verb with a function that raises, so a test that would have hit
+TCGdex, pokemontcg.io, ntfy or a Discord webhook fails loudly instead of
+passing slowly. Tests that need an API response monkeypatch `app.tcgdex`.
+
+`app.py` reads its configuration into module-level constants at import time, so
+`conftest.py` sets the environment before importing it. A test that needs a
+different `ADMIN_USER` or `PREMIUM_CODE` monkeypatches the attribute on the
+module — that is the value the request handlers actually read.
+
+What's covered, roughly in order of how much damage the bug would do:
+
+| File | What it pins down |
+| --- | --- |
+| `test_isolation.py` | Every per-user surface probed from a second account: holdings, alerts, watchlist, sales, custom items, exports, snapshots, totals. Plus the reverse — cards and prices are asserted to stay *shared*, because that is the cost model. |
+| `test_gates.py` | Logged-out redirects, 401 JSON on `/api/*`, the admin gate failing closed when `ADMIN_USER` is unset, premium read from the database rather than the session, code redemption, signup validation, and the `?next=` open redirect. |
+| `test_scan.py` | OCR matching: name cleaning, `l`/`I`→`1` and `O`→`0`, the short-token rule, prefix shortening, the request cap, and that a scan never adds a card by itself. |
+| `test_ranking.py` | `rank_key` — exact and prefix sharing a tier, novelty series demoted below every normal tier, newest set first, unknown sets not crashing. |
+| `test_images.py` | The `TCGdex → pokemontcg.io → placeholder` chain, `setmap.json` translation, and that an *unverified* pokemontcg.io URL never enters the chain. |
+| `test_pricing.py` | `price_from`'s contract — the seam a licensed provider gets swapped in at — plus one price row per card per day and carrying the last price forward when a fetch fails. |
+| `test_import.py` | Bulk import: quantity/price parsing, quoted commas, the 300-row cap, and re-importing a card you already own topping up the pile instead of hitting the unique constraint. |
+
 ## What's in it
 
 - Accounts (hashed passwords). Every user only sees their own collection.
@@ -69,6 +105,128 @@ is picked up by `backfill_alt_images()` during the daily 06:00 refresh.
 
 Existing databases migrate automatically on boot (`ADD COLUMN IF NOT EXISTS`).
 
+## Bulk import
+
+Rewritten after a real 143-row Collectr export resolved 141 names but matched
+the right *printing* for only 104 of them, and could not finish inside a
+request.
+
+**Two steps.** `POST /import` parses and stages the paste — pure string work, so
+it returns immediately — then a background thread resolves each row while the
+page polls `/api/import/<id>`. Nothing reaches `holdings` until you have seen
+the review table and pressed commit. There is no 300-row cap any more; the
+limit is 2,000 and it is reported rather than silent.
+
+**The set column decides the printing.** Ignoring it is what put 37 rows on the
+right Pokémon in the wrong set — a Scarlet & Violet Base card landing on a Prize
+Pack reprint. Set names and abbreviations resolve through `sets.json`, the
+search is constrained to that set, and a row whose card is *not* in the named
+set is reported unmatched rather than reattached somewhere plausible.
+
+Each row carries a confidence: `exact` (set and number), `set` (number did not
+match), `number` (set unrecognised), `name` (the printing is a guess), or
+`unmatched`.
+
+**Collector numbers are preserved verbatim.** `072/080` → `072`, `TG06/TG30` →
+`TG06`, `SWSH153` → `SWSH153`, `84a/111` → `84a`. Zero padding is significant:
+TCGdex uses `072` for SV-era sets and `44` for older ones, so normalising either
+way breaks the match. The old code ran `re.fullmatch(r"\d+")` and dropped
+anything with a slash or a letter.
+
+**No column becomes cost basis unless you say so.** Collectr's column is
+`collectr_price_gbp` — current market value, not what you paid — and importing
+it as cost makes every card show zero gain forever. Unlabelled numbers are never
+treated as cost, market values land in their own field, and the review step asks
+which it is.
+
+**Variant, condition, finish, grade and region are kept.** Collectr appends
+`(Master Ball Pattern)`, `(Full Art)`, `(JP)`, `(CN)`; TCGdex indexes the plain
+name, so those are stripped for the lookup and stored alongside the holding.
+Grades are parsed out of the condition field (PSA, BGS, CGC, SGC, ACE, TAG) into
+`holdings.grade`, which is part of the holdings unique key — the old importer
+omitted it from the INSERT, so a PSA 10 collapsed into the raw copy.
+
+**Japanese and Chinese rows never fall back to English.** TCGdex is multilingual
+and JP rows are looked up under `/ja`. There is no Chinese endpoint, so CN rows
+are reported unmatched with their name, set, number and value preserved. This is
+the most important rule in the importer: silently pricing a £200 Chinese Cubone
+as a common English one looks confident and is completely wrong, which is worse
+than saying "not found". Any region without a TCGdex endpoint stops the same way.
+
+**Graded cards are priced as graded** — see below.
+
+The test fixture is `tests/fixtures/tests-fixture-collectr.csv`.
+
+## Graded pricing
+
+`price_from()` returns one raw market price, so a slab was valued as if it were
+a raw copy: a £44 PSA 10 Ditto V showed as roughly £1.
+
+There is no free graded feed. TCG Price Lookup's free tier is TCGplayer raw
+only; graded needs their paid Trader plan. The one genuinely free route is eBay
+**sold comps**, where the grade is written in the listing title and can be
+parsed out — that is what `fetch_comps()` reads, from `GRADED_API`
+(`https://tcgapi.net/v1` by default, `GRADED_API_KEY` optional).
+
+Prices land in `graded_prices`, keyed `(card_id, grade, day)` and shared across
+users exactly like `prices` — one lookup per card per grade serves everybody
+holding it. It is a separate table because the cadence, the source and the
+confidence are all different from raw.
+
+Three rules do the real work:
+
+- **The median, not the mean.** eBay has silly listings; one £300 sale must not
+  move a £56 card.
+- **A thin sample is not a price.** Below `GRADED_MIN_SAMPLES` (3) nothing is
+  stored or read back. Two sales is a coincidence, not a market.
+- **An unreachable source falls back to raw and says so.** `price_basis` on
+  every holding is one of `manual`, `graded`, `raw`, or `raw-fallback`, and the
+  card page prints which — "Priced as PSA 10, median of 5 sold listings,
+  £40–£48" or "PSA 10 — priced as raw". A wrong number shown confidently is the
+  failure being avoided; a right number with a caveat is not.
+
+A graded holding gets **no 24h/7d/30d change**. The raw series is not its
+history, and borrowing it would be inventing movement.
+
+The sweep is weekly (`GRADED_TTL_DAYS`), runs inside the nightly refresh, and
+only looks up grades somebody actually holds. Weekly rather than daily because
+comps move slowly and the feed is rate-limited — and because the plan is graded
+weekly for free accounts, daily for paid.
+
+**The sold log is the second source.** `sales.grade` is recorded when a graded
+holding is sold, and `crowd_graded_price()` uses those when comps come back
+empty. Sparse to begin with, but it is data nobody else has.
+
+The response shape is read defensively — several wrappers, prices as strings or
+nested objects — because it is a third-party feed and a schema change should
+cost the graded price, not the portfolio page.
+
+## Worth grading?
+
+`/grading` answers "is this raw card worth sending off?" — which was
+unanswerable while every slab was priced as raw.
+
+Net is measured against **selling the card raw today**, because the choice is
+not "grade or do nothing", it is "grade or sell it as it is". So the raw price
+comes off the top alongside the fee and a share of one submission's postage.
+
+**Every grade with real comps is listed, not just the best one.** You cannot
+order a PSA 10, and showing only the top line would be selling a gamble as a
+certainty. A grade that would lose money is shown losing money.
+
+Nothing is computed without comps that clear `GRADED_MIN_SAMPLES` — an ROI
+built on a guessed graded price is the same confidently-wrong failure this
+codebase avoids everywhere else. Cards already in a slab are not candidates,
+and neither are manually valued ones, since a price somebody typed in is not a
+market to arbitrage against.
+
+**The fees are estimates, not quotes.** Grading companies change tiers and
+pricing regularly and none of them publish a feed, so `GRADING_FEE_TIERS`,
+`GRADING_POSTAGE`, `GRADING_BATCH` and `GRADING_MIN_UPLIFT` are all
+configurable and the page says on its face that they need checking. It also
+says what it does not model: the chance the card comes back lower than you
+hoped, and the months it spends away from you.
+
 ## Analytics
 
 Usage is logged server-side into the `events` table and shown at `/stats`.
@@ -113,6 +271,13 @@ nobody is an admin. Granting premium by hand is a SQL statement:
 
     UPDATE users SET premium = true, premium_since = now() WHERE username = 'x';
 
+One more that the tests caught: `?next=` on the login form was passed straight
+to `redirect()`, so `/login?next=https://evil.example` logged you in on the real
+site and then bounced you off it — a complete phishing hop wearing the real
+domain and a real login. `safe_next()` now accepts only a single-slash relative
+path, rejecting protocol-relative `//host`, absolute URLs, and backslashes
+(browsers normalise `\` to `/`).
+
 ## Landing page
 
 `/` serves a public landing page when logged out and the portfolio when logged
@@ -148,14 +313,102 @@ with. It was removed wholesale.
 
 What replaced it:
 
-- Pure black. One accent (`--acc`, acid lime) used only for the active tab,
-  primary actions, positive change, and owned cards.
-- Numerals in JetBrains Mono. Prices, values and stats all share one voice.
 - Two radii, `--r` (4px) and `--r2` (6px). Nothing else.
 - Hairline dividers instead of card-in-card surfaces.
 - Card art displayed large and plain. Nothing sits on top of it.
 - Uppercase 12px section labels, so the hierarchy reads at a glance.
+- Numerals in JetBrains Mono. Prices, values and stats share one voice.
+
+v0.17 kept all of that and changed the two things that carried the most
+personality: the colour and the typeface.
+
+**Cool charcoal and steel, not black and acid lime.** `--bg` is `#0b0d10` and
+the accent is a desaturated slate blue, `#8fb3d9`. The neutrals carry a blue
+cast so the accent sits in the same family rather than on top of it. The point
+is low chroma: a page of Pokémon card art is already saturated, and an acid
+accent competed with every card on the screen instead of framing it. Green
+(`--up`) and clay red (`--down`) are now separate from the accent and mean only
+one thing — direction.
+
+The portfolio chart draws a rising line in the *accent*, not in the up-green.
+Green everywhere would put the brand colour nowhere on the screen that matters
+most, and an instrument draws its own line in its own colour and saves the
+semantic hues for the deltas. A falling line still goes red: that is the one
+state worth interrupting for.
+
+**One typeface, not three.** Hierarchy comes from size and weight rather than
+from switching family. An earlier v0.17 pass used a display serif for headlines;
+it read as decoration rather than structure and was dropped.
+
+**The figure face is no longer monospace.** Numerals were JetBrains Mono — a
+*coding* face, with terminal letter-spacing and slashed zeros, which made a
+portfolio total read like stdout rather than money. `--fig` now follows
+`--sans`, so the biggest number on the screen is set in whatever face you
+chose. Columns still line up because `body` already sets
+`font-feature-settings: "tnum"`; alignment never needed a monospace face, only
+tabular figures. Weights and tracking on the big figures were retuned at the
+same time — 500 and `-.02em` were tuned for a face with fixed advance widths.
+
+### Themes
+
+Palette and typeface are chosen by the person using the app, on the You tab.
+Nine palettes (including two light ones — every other card tracker is dark) and
+eight faces, each a complete token set so adding one is additive and cannot
+half-apply. The default is **Ember + Bricolage Grotesque**: a near-black with a
+warm orange accent, and a grotesque with enough character in its figures to
+carry the portfolio total.
+
+Nothing paints a colour it hasn't read from the tokens. `drawLine`'s defaults
+come from `--up`/`--down` rather than a fixed hex, so every sparkline in the app
+follows the theme; and the share card, which draws to a canvas and so gets no
+cascade, reads the palette and the selected family out of the computed style and
+passes them into the drawing code. Both were previously stamped with one theme's
+colours regardless of what was on screen.
+
+`static/theme.js` is loaded **synchronously in `<head>`, before `app.css`**.
+That ordering is the whole feature: stamped after the stylesheet, every page
+load flashes the default theme first. `tests/test_theme.py` asserts it, along
+with the script carrying no `defer`/`async`.
+
+The choice lives in `localStorage`, not on the user row: it is a per-device
+display preference, it has to resolve before the first paint (a round trip
+cannot), and it needs no migration. It does not follow you to a second device —
+the right trade for a setting you change once. Every read is wrapped, because
+`localStorage` throws outright in some private modes.
+
+Only the selected font family is fetched; loading all eight would cost more
+than the feature is worth.
 
 The set completion grid also had a real bug: missing cards were dimmed to
 `brightness(.22)`, which is indistinguishable from black on a phone. They are
 now greyscale at `.62`, so the whole set reads as a checklist.
+
+### Portfolio tab
+
+The graph is the reason the tab exists, so it is now the main object on it. It
+used to be 150px tall and wedged between a scrolling card strip above it and
+its own range buttons below. Now:
+
+- The chart is 232px (280px from 560px up) and sits directly under the value.
+- Its range tabs are one segmented control, with Share moved out of that row so
+  the tabs read as a single thing rather than five loose buttons.
+- A reserved strip above the canvas — not an overlay, which would put text on
+  top of the line exactly where the line is interesting — shows what the
+  *selected* window moved by in pounds. The hero already carries the total and
+  its chips are fixed windows in percent, so this says something new. Drag
+  across the chart and it becomes that day's value and date.
+- `drawLine` gained an optional `padX` (default 0, so every other chart in the
+  app is untouched) to stop the end dot being clipped by the canvas edge, and
+  the portfolio chart now takes `--up`/`--down` from the palette instead of
+  `drawLine`'s pre-0.16 mint and salmon.
+
+Below the graph, above the numbers, the top five holdings are shown as art: the
+biggest one large, the other four beside it. The art keeps its true aspect and
+nothing is laid over it — the featured caption is pushed to the bottom of its
+column so it lines up with the captions next to it.
+
+That showcase replaced two sections that were rendering the *same five cards*
+twice: the old horizontal `.holdstrip` above the chart, and the "Biggest
+holdings" rows below it (`s.top` is already `hs[:5]`, so they were identical).
+`tests/test_portfolio_layout.py` asserts the order, since it is the kind of
+thing an unrelated edit shuffles by accident.

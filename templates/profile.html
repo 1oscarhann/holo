@@ -12,6 +12,14 @@
     <div class="fig"><div class="k">Sets</div><div class="v num">{{ s.sets|length }}</div></div>
   </div>
 </section>
+<section class="sec" id="appearance">
+  <h2>Appearance</h2>
+  <p class="tiny muted" style="line-height:1.55;margin-bottom:14px">Changes as you tap, saved on this device. The typeface sets your portfolio total too — it's the biggest number on the screen, so it's worth trying a few.</p>
+  <div class="themer">
+    <div class="grp"><b>Palette</b><div class="swatches" id="sw"></div></div>
+    <div class="grp"><b>Typeface</b><div class="faces" id="fc"></div></div>
+  </div>
+</section>
 <section class="sec">
   <h2>Notifications</h2>
   <p class="tiny muted" style="line-height:1.55;margin-bottom:14px">Alerts and the morning digest go to the <a href="https://ntfy.sh" style="text-decoration:underline">ntfy</a> app — install it, subscribe to a topic name nobody would guess, type it here. Or paste a Discord webhook.</p>
@@ -53,6 +61,7 @@
 <nav class="jump">
   <a href="/sold"><b>Sold log</b><span>What you sold and what you made</span></a>
   <a href="/import"><b>Import cards</b><span>Paste a CSV or a list</span></a>
+  <a href="/manual"><b>Manual entries</b><span>Sealed product, and cards no API carries</span></a>
 </nav>
 
 <section class="sec" id="feedback">
@@ -92,6 +101,53 @@ document.getElementById('fb-send').onclick = async e => {
   catch { toast('Could not send'); }
   e.target.disabled = false;
 };
+/* ---- appearance picker ---- */
+(function(){
+  const PAL = [
+    ['ultramarine','Ultramarine','#06080f','#4d7cff'], ['steel','Steel','#0b0d10','#8fb3d9'],
+    ['acid','Acid','#000000','#c8ff3d'],               ['ember','Ember','#0d0907','#ff6a3d'],
+    ['gold','Gold leaf','#0c0b09','#d9a441'],          ['jade','Jade','#05100c','#35d6a0'],
+    ['mono','Monochrome','#08080a','#f4f4f6'],         ['vault','Vault','#f2efe8','#9c2f2a'],
+    ['gallery','Gallery','#f6f7f9','#1b4dd6'],
+  ];
+  const FACE = [
+    ['familjen','Familjen Grotesk','tight'], ['archivo','Archivo','sturdy'],
+    ['schibsted','Schibsted Grotesk','editorial'], ['bricolage','Bricolage Grotesque','quirky'],
+    ['chivo','Chivo','industrial'], ['intertight','Inter Tight','precise'],
+    ['instrument','Instrument Sans','neutral'], ['fraunces','Fraunces','serif'],
+  ];
+  const sw = document.getElementById('sw'), fc = document.getElementById('fc');
+  if (!sw || !window.holoTheme) return;
+  const now = holoTheme.get();
+
+  PAL.forEach(([id, name, bg, acc]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'sw-b';
+    b.setAttribute('aria-pressed', String(id === now.theme));
+    b.innerHTML = '<span class="dot" style="background:' + bg + '"><i style="background:' +
+                  acc + '"></i></span>' + name;
+    b.onclick = () => {
+      holoTheme.set('theme', id);
+      sw.querySelectorAll('.sw-b').forEach(x => x.setAttribute('aria-pressed','false'));
+      b.setAttribute('aria-pressed','true');
+    };
+    sw.appendChild(b);
+  });
+
+  FACE.forEach(([id, name, note]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'fc-b';
+    b.setAttribute('aria-pressed', String(id === now.face));
+    b.innerHTML = name + '<span>' + note + '</span>';
+    b.onclick = () => {
+      holoTheme.set('font', id);
+      fc.querySelectorAll('.fc-b').forEach(x => x.setAttribute('aria-pressed','false'));
+      b.setAttribute('aria-pressed','true');
+    };
+    fc.appendChild(b);
+  });
+})();
+
 const body = () => ({ntfy_topic: document.getElementById('n-topic').value, discord_webhook: document.getElementById('n-hook').value, digest: document.getElementById('n-digest').checked});
 document.getElementById('n-save').onclick = async () => { try { await api('/api/settings','POST',body()); toast('Saved'); } catch(e){ toast(e.message); } };
 document.getElementById('n-test').onclick = async () => { try { await api('/api/settings','POST',body()); const r = await api('/api/settings/test','POST'); toast(r.ok ? 'Sent — check your phone' : r.error); } catch(e){ toast(e.message); } };

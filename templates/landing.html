@@ -5,73 +5,114 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Holo — know what your Pokémon cards are worth</title>
 <meta name="description" content="Track your Pokémon card collection's value, daily. Set completion, price alerts, market movers.">
-<meta name="theme-color" content="#0b0d12">
+<meta name="theme-color" content="#0d0907">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="{{ sv('theme.js') }}"></script>
 <link rel="stylesheet" href="{{ sv('app.css') }}">
 <link rel="manifest" href="/manifest.json">
 </head>
 <body class="landing">
 
 <header class="lnav">
-  <span class="brand">Holo</span>
-  <span class="tag">beta</span>
+  <a class="lbrand" href="/"><span class="holo">Holo</span><i>beta</i></a>
   <a class="lin" href="/login">Log in</a>
 </header>
 
 <section class="lhero">
-  <h1>Know what your<br>collection is worth.</h1>
-  <p>Holo tracks the value of every Pokémon card you own, refreshed every
-     morning. See what moved, what you're missing, and what it's all worth.</p>
-  <a class="lcta" href="/signup">Create a free account</a>
-  <span class="lnote">Free · no card needed · takes a minute</span>
+  <p class="lkick">Built for collectors in the UK</p>
+  <h1>Your collection,<br><em>priced in pounds.</em></h1>
+  <p class="lsub">Holo values every card you own from Cardmarket each morning —
+     the market you actually buy and sell in. Not a dollar price converted at
+     the last second.</p>
+  <div class="lact">
+    <a class="lcta" href="/signup">Create a free account</a>
+    <a class="lalt" href="/login">I already have one</a>
+  </div>
+  <p class="lnote">Free · no card details · about a minute</p>
+</section>
 
-  <div class="lshots">
-    <img src="{{ sv('img/cards.png') }}" alt="Your collection as a grid of card art" loading="lazy">
-    <img src="{{ sv('img/home.png') }}" alt="Portfolio value and 30-day chart" class="mid">
-    <img src="{{ sv('img/set.png') }}" alt="Set completion grid" loading="lazy">
+<section class="lfacts">
+  <div><b class="num">06:00</b><span>Every card you own, repriced. Daily.</span></div>
+  <div><b class="num">150</b><span>Chase cards tracked whether you own them or not.</span></div>
+  <div><b class="num">GBP</b><span>From Cardmarket. Not converted from a US price.</span></div>
+</section>
+
+<section class="lcut">
+  <figure class="spec" aria-label="The portfolio screen: total value, change chips and a 30-day chart">
+    <div class="sp-lab">Portfolio</div>
+    <div class="sp-val num"><small>£</small>2,204.80</div>
+    <div class="sp-chips"><span>24h <b>+0.63%</b></span><span>7d <b>+4.19%</b></span><span>30d <b>+6.03%</b></span></div>
+    <svg class="sp-chart" viewBox="0 0 300 96" preserveAspectRatio="none" aria-hidden="true">
+      <path class="sp-fill" d="M0,78 L18,72 L36,74 L54,52 L72,56 L90,44 L108,49 L126,30 L144,38 L162,26 L180,33 L198,18 L216,24 L234,14 L252,20 L270,9 L288,13 L300,6 L300,96 L0,96 Z"/>
+      <path class="sp-line" d="M0,78 L18,72 L36,74 L54,52 L72,56 L90,44 L108,49 L126,30 L144,38 L162,26 L180,33 L198,18 L216,24 L234,14 L252,20 L270,9 L288,13 L300,6"/>
+    </svg>
+    <div class="sp-tabs"><i>7d</i><i class="on">30d</i><i>90d</i><i>All</i></div>
+  </figure>
+  <div>
+    <p class="leyebrow">Daily valuation</p>
+    <h2>What your binder did while you slept.</h2>
+    <p>One number, refreshed every morning, with the 24-hour, 7-day and 30-day
+       move under it. Drag across the chart to read any single day. Your
+       all-time high sits there too, and how far below it you are — usually
+       the more interesting number of the two.</p>
   </div>
 </section>
 
-<section class="lfeat">
+<section class="lcut flip">
+  <figure class="spec" aria-label="A set completion grid: owned cards bright, missing cards dimmed">
+    <div class="sp-lab">Prismatic Evolutions</div>
+    <div class="sp-setline"><b class="num">84</b><span>of 131</span><i style="width:64%"></i></div>
+    <div class="sp-grid">
+      {% for n in [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24] %}
+      <span class="{{ 'has' if n not in [3,7,8,13,18,20,23] else 'miss' }}">{{ '%03d'|format(n) }}</span>
+      {% endfor %}
+    </div>
+  </figure>
   <div>
-    <b>Daily valuations</b>
-    <span>Every card you own, priced each morning. 24-hour, 7-day and 30-day
-          movement on your whole portfolio.</span>
-  </div>
-  <div>
-    <b>Set completion</b>
-    <span>Every card in a set laid out. The ones you own in full colour, the
-          ones you're missing dimmed. You'll see the gaps immediately.</span>
-  </div>
-  <div>
-    <b>Price alerts</b>
-    <span>Tell Holo a number. It messages you when a card crosses it, so you
-          know when to sell without watching charts.</span>
-  </div>
-  <div>
-    <b>Market movers</b>
-    <span>The chase cards from recent sets, tracked daily — so you can see
-          what's climbing before you buy.</span>
-  </div>
-  <div>
-    <b>Sold log</b>
-    <span>Record what you actually sold and for how much. Paper value is one
-          thing; realised profit is another.</span>
-  </div>
-  <div>
-    <b>Works like an app</b>
-    <span>Add it to your home screen and it runs full screen, no address bar.
-          Nothing to install from a store.</span>
+    <p class="leyebrow">Set completion</p>
+    <h2>The gaps, laid out.</h2>
+    <p>Every card in a set, in collector order. The ones you own in full
+       colour, the ones you don't dimmed right back. No spreadsheet, no
+       counting — you'll see what's missing before you've finished scrolling.</p>
   </div>
 </section>
 
-<section class="lmarket">
-  <img src="{{ sv('img/market.png') }}" alt="Market movers screen" loading="lazy">
+<section class="lcut">
+  <figure class="spec" aria-label="Market movers: the biggest daily risers across recent sets">
+    <div class="sp-lab">Market gainers <em>24h</em></div>
+    <ul class="sp-rows">
+      <li><span class="sp-n">Steven's Metagross ex</span><b class="num up">+12.4%</b><i class="num">£65.28</i></li>
+      <li><span class="sp-n">Meowth ex</span><b class="num up">+12.1%</b><i class="num">£71.49</i></li>
+      <li><span class="sp-n">Marnie's Grimmsnarl ex</span><b class="num up">+11.7%</b><i class="num">£40.88</i></li>
+      <li><span class="sp-n">Mega Greninja ex</span><b class="num up">+11.7%</b><i class="num">£110.24</i></li>
+      <li><span class="sp-n">Roxie's Performance</span><b class="num up">+11.6%</b><i class="num">£13.23</i></li>
+      <li><span class="sp-n">Iris's Fighting Spirit</span><b class="num up">+10.6%</b><i class="num">£29.90</i></li>
+    </ul>
+  </figure>
   <div>
-    <h2>See the market, not just your binder.</h2>
-    <p>Holo tracks 150 chase cards from the most recent sets whether you own
-       them or not — so the market page works on day one, and the moment you
-       add one of them your price history is already there.</p>
+    <p class="leyebrow">Market movers</p>
+    <h2>The market, not just your binder.</h2>
+    <p>150 chase cards from the newest sets, priced daily whether you own them
+       or not. The market page works on day one — and the moment you add one of
+       them, your price history is already there.</p>
   </div>
+</section>
+
+<section class="lgrid">
+  <h2 class="lgrid-h">And the rest of it</h2>
+  <ul>
+    <li><b>Price alerts</b><span>Name a number. Holo messages you when a card crosses it — on any card, not just ones you own.</span></li>
+    <li><b>Sold log</b><span>What you actually got for it, minus what you paid. Paper value is not profit.</span></li>
+    <li><b>Camera scan</b><span>Point your phone at a card. It reads the name and collector number and finds it.</span></li>
+    <li><b>Bulk import</b><span>Paste a list from a spreadsheet. Three hundred cards at a time.</span></li>
+    <li><b>Watchlist</b><span>Track cards you haven't bought yet, with the same daily pricing.</span></li>
+    <li><b>Insights</b><span>Value by rarity, your biggest movers, what you're up on and what you're not.</span></li>
+    <li><b>Compare</b><span>Two cards side by side, with both price histories.</span></li>
+    <li><b>Your data out</b><span>Holdings, price history and portfolio value as CSV, whenever you want it.</span></li>
+    <li><b>Grades and quantities</b><span>Same card, different grade, tracked separately. Manual valuations where you want them.</span></li>
+    <li><b>Runs like an app</b><span>Add to home screen. Full screen, no address bar, nothing to install from a store.</span></li>
+  </ul>
 </section>
 
 <section class="lend">
@@ -82,7 +123,9 @@
 </section>
 
 <footer class="lfoot">
-  <span>Holo {{ VERSION }} — early access beta. Things will break.</span>
+  <span class="lfoot-b"><span class="holo">Holo</span> {{ VERSION }} — early access beta. Things will break.</span>
+  <span>Prices are aggregated market data and update once a day. They are an
+        estimate, not an offer.</span>
   <span>Not affiliated with The Pokémon Company, Creatures, Game Freak or Nintendo.
         Card images and names are the property of their respective owners.</span>
 </footer>
