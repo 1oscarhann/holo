@@ -1014,3 +1014,49 @@ body.landing{background:var(--bg);color:var(--ink);padding-bottom:0;
 .fc-b[aria-pressed="true"]{border-color:var(--acc);color:var(--ink)}
 .fc-b span{display:block;font-family:var(--sans);font-size:9.5px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--ink3);margin-top:3px}
+
+
+/* ==== bulk import review ================================================= */
+/* The importer is two-step now: match everything, show what it found, commit
+   only what was confirmed. This is the review table. */
+.imp-bar{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin:4px 0 10px}
+.imp-bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s ease}
+.imp-count{font-size:12.5px;color:var(--ink2)}
+
+.imp-legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.imp-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);
+  border-radius:var(--r);padding:5px 9px;font-size:11.5px;color:var(--ink2);
+  background:transparent;cursor:pointer;font:inherit;font-size:11.5px}
+.imp-chip b{font-weight:600;color:var(--ink)}
+.imp-chip.ok{border-color:color-mix(in srgb,var(--up) 45%,var(--line2));color:var(--up)}
+.imp-chip.warn{border-color:color-mix(in srgb,var(--acc) 45%,var(--line2));color:var(--acc)}
+.imp-chip.bad{border-color:color-mix(in srgb,var(--down) 45%,var(--line2));color:var(--down)}
+.imp-chip.ok b,.imp-chip.warn b,.imp-chip.bad b{color:inherit}
+
+/* the "is this column cost or market value?" question */
+.imp-paid{border:1px solid var(--acc);border-radius:var(--r2);padding:14px;
+  margin-bottom:16px;background:var(--bg2)}
+.imp-paid b{display:block;font-size:14px;margin-bottom:5px}
+.imp-paid span{display:block;font-size:12.5px;color:var(--ink2);line-height:1.55}
+
+.imp-rows{border-top:1px solid var(--line)}
+.imp-row{display:flex;gap:11px;align-items:flex-start;padding:11px 0;
+  border-bottom:1px solid var(--line)}
+.imp-row.off{opacity:.42}
+.imp-keep input{width:18px;height:18px;margin-top:2px}
+.imp-main{flex:1;min-width:0}
+.imp-name{font-size:14.5px;font-weight:500}
+.imp-src{font-size:11.5px;color:var(--ink3);margin-top:2px}
+.imp-got{font-size:12px;color:var(--ink2);margin-top:3px}
+.imp-none{color:var(--down)}
+.imp-note{font-size:11.5px;color:var(--ink3);margin-top:4px;line-height:1.45}
+.imp-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.imp-tag{font-style:normal;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  border:1px solid var(--line2);border-radius:2px;padding:2px 5px;color:var(--ink3)}
+.imp-tag.grade{border-color:var(--acc);color:var(--acc)}
+.imp-tag.region{border-color:var(--ink3);color:var(--ink2)}
+.imp-right{flex:none;text-align:right;display:flex;flex-direction:column;
+  align-items:flex-end;gap:4px}
+.imp-price{font-size:13px}
+.imp-mkt{font-size:11px;color:var(--ink3)}
+.imp-filter{display:flex;gap:6px;flex-wrap:wrap}

@@ -54,6 +54,28 @@ def no_network(monkeypatch):
         monkeypatch.setattr(holo.requests, verb, boom)
 
 
+@pytest.fixture(autouse=True)
+def no_background_threads(monkeypatch):
+    """Never let a test spawn the import worker.
+
+    POST /import hands resolution to a background thread with its own
+    connection. In the suite that thread races the next test's TRUNCATE and
+    deadlocks, and the failure surfaces somewhere unrelated. Tests that want
+    the work done call run_import_job directly, which is synchronous.
+    """
+    started = []
+
+    class Recorded:
+        def __init__(self, target=None, args=(), kwargs=None, **kw):
+            self.target, self.args = target, args or ()
+
+        def start(self):
+            started.append((self.target, self.args))
+
+    monkeypatch.setattr(holo.threading, "Thread", Recorded)
+    return started
+
+
 @pytest.fixture
 def client():
     holo.app.config["TESTING"] = True

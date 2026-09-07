@@ -105,6 +105,63 @@ is picked up by `backfill_alt_images()` during the daily 06:00 refresh.
 
 Existing databases migrate automatically on boot (`ADD COLUMN IF NOT EXISTS`).
 
+## Bulk import
+
+Rewritten after a real 143-row Collectr export resolved 141 names but matched
+the right *printing* for only 104 of them, and could not finish inside a
+request.
+
+**Two steps.** `POST /import` parses and stages the paste — pure string work, so
+it returns immediately — then a background thread resolves each row while the
+page polls `/api/import/<id>`. Nothing reaches `holdings` until you have seen
+the review table and pressed commit. There is no 300-row cap any more; the
+limit is 2,000 and it is reported rather than silent.
+
+**The set column decides the printing.** Ignoring it is what put 37 rows on the
+right Pokémon in the wrong set — a Scarlet & Violet Base card landing on a Prize
+Pack reprint. Set names and abbreviations resolve through `sets.json`, the
+search is constrained to that set, and a row whose card is *not* in the named
+set is reported unmatched rather than reattached somewhere plausible.
+
+Each row carries a confidence: `exact` (set and number), `set` (number did not
+match), `number` (set unrecognised), `name` (the printing is a guess), or
+`unmatched`.
+
+**Collector numbers are preserved verbatim.** `072/080` → `072`, `TG06/TG30` →
+`TG06`, `SWSH153` → `SWSH153`, `84a/111` → `84a`. Zero padding is significant:
+TCGdex uses `072` for SV-era sets and `44` for older ones, so normalising either
+way breaks the match. The old code ran `re.fullmatch(r"\d+")` and dropped
+anything with a slash or a letter.
+
+**No column becomes cost basis unless you say so.** Collectr's column is
+`collectr_price_gbp` — current market value, not what you paid — and importing
+it as cost makes every card show zero gain forever. Unlabelled numbers are never
+treated as cost, market values land in their own field, and the review step asks
+which it is.
+
+**Variant, condition, finish, grade and region are kept.** Collectr appends
+`(Master Ball Pattern)`, `(Full Art)`, `(JP)`, `(CN)`; TCGdex indexes the plain
+name, so those are stripped for the lookup and stored alongside the holding.
+Grades are parsed out of the condition field (PSA, BGS, CGC, SGC, ACE, TAG) into
+`holdings.grade`, which is part of the holdings unique key — the old importer
+omitted it from the INSERT, so a PSA 10 collapsed into the raw copy.
+
+**Japanese and Chinese rows never fall back to English.** TCGdex is multilingual
+and JP rows are looked up under `/ja`. There is no Chinese endpoint, so CN rows
+are reported unmatched with their name, set, number and value preserved. This is
+the most important rule in the importer: silently pricing a £200 Chinese Cubone
+as a common English one looks confident and is completely wrong, which is worse
+than saying "not found". Any region without a TCGdex endpoint stops the same way.
+
+**Graded cards are still priced as raw.** `price_from()` returns one raw market
+price and there is no free source of graded prices — TCG Price Lookup's free tier
+is TCGplayer raw only, and `tcgapi.net`'s `/v1/comps` (eBay sold comps, grade
+parseable from the listing title) is the only genuinely free route. Until that
+exists, graded rows import with the grade recorded and the review step says
+plainly that they are priced as raw, rather than showing a wrong number quietly.
+
+The test fixture is `tests/fixtures/tests-fixture-collectr.csv`.
+
 ## Analytics
 
 Usage is logged server-side into the `events` table and shown at `/stats`.

@@ -1,33 +1,200 @@
 {% extends "base.html" %}
 {% block body %}
-<section class="sec" style="padding-top:24px">
+<section class="sec" style="padding-top:24px" id="step-paste">
   <h2>Bulk import</h2>
   <p class="hint" style="text-align:left;padding:0 0 14px">
-    Paste a CSV export from Collectr or TCGplayer, or just one card per line.
-    Quantity, set number and price are picked up if they're there.
+    Paste a CSV export — Collectr, TCGplayer, or a spreadsheet with a header row.
+    Nothing is added until you've seen what matched.
   </p>
-  <textarea id="bulk" rows="9" placeholder="2, Umbreon ex, 161, 480.00
-Charizard ex, 223
-Mew ex, 201, 95"></textarea>
-  <button class="btn" id="go">Import</button>
+  <textarea id="bulk" rows="9" placeholder="name,set,rarity,number,qty,condition,finish,collectr_price_gbp
+Umbreon ex,Prismatic Evolutions,Special Illustration Rare,161/131,1,Near Mint,Holofoil,480.00
+Charizard ex,Obsidian Flames,Double Rare,125/197,2,Near Mint,Holofoil,18.40"></textarea>
+  <button class="btn" id="go">Check the paste</button>
   <div id="out" class="hint" style="text-align:left"></div>
+</section>
+
+<section class="sec" id="step-progress" hidden>
+  <h2>Matching</h2>
+  <p class="hint" style="text-align:left;padding:0 0 12px" id="prog-note">
+    Looking each card up. This takes about a second and a half a row, so a big
+    export is a few minutes. You can leave this page open.
+  </p>
+  <div class="imp-bar"><i id="prog-fill"></i></div>
+  <div class="imp-count num" id="prog-count">0 / 0</div>
+</section>
+
+<section class="sec" id="step-review" hidden>
+  <h2>Review <span class="tiny muted" id="rev-sum"></span></h2>
+
+  <div class="imp-legend" id="rev-counts"></div>
+
+  <div class="imp-paid" id="paid-ask" hidden>
+    <b>Is that price column what you paid?</b>
+    <span>Most exports carry current market value, not cost. If it's market
+          value, leave it out — importing it as cost makes every card show
+          zero gain forever.</span>
+    <div class="prow">
+      <button class="btn ghost" data-paid="none">It's market value</button>
+      <button class="btn ghost" data-paid="market">It's what I paid</button>
+    </div>
+  </div>
+
+  <div class="imp-filter" id="rev-filter"></div>
+  <div class="imp-rows" id="rev-rows"></div>
+
+  <div class="list-actions" style="margin-top:18px">
+    <button class="btn" id="commit">Import the matched rows</button>
+  </div>
+  <p class="hint" style="text-align:left;padding:10px 0 0" id="commit-note"></p>
 </section>
 {% endblock %}
 
 {% block script %}
 <script>
-document.getElementById('go').onclick = async e => {
-  const t = document.getElementById('bulk').value.trim();
+const $ = s => document.querySelector(s);
+let JOB = null, ROWS = [], FILTER = 'all';
+
+const CONF = {
+  exact:     ['Exact',        'ok',   'Set and number both matched'],
+  set:       ['Set matched',  'ok',   'Right set, collector number did not match'],
+  number:    ['Number only',  'warn', 'Set name not recognised; matched on number'],
+  name:      ['Name only',    'warn', 'Printing is a guess — check this one'],
+  unmatched: ['Not found',    'bad',  'Nothing safe to attach; will be skipped'],
+};
+
+$('#go').onclick = async e => {
+  const t = $('#bulk').value.trim();
   if (!t) return toast('Paste some cards first');
-  const out = document.getElementById('out');
-  e.target.disabled = true; out.textContent = 'Importing…';
+  e.target.disabled = true;
+  $('#out').textContent = 'Reading…';
   try {
     const r = await api('/import', 'POST', {text: t});
-    out.innerHTML = `Added <b>${r.added}</b> of ${r.total}.` +
-      (r.failed.length ? `<br>Not found: ${r.failed.join(', ')}` : '');
-    if (r.added) setTimeout(() => location.href = '/cards', 1200);
-  } catch (err) { out.textContent = 'Import failed.'; }
-  e.target.disabled = false;
+    JOB = r.job;
+    $('#step-paste').hidden = true;
+    $('#step-progress').hidden = false;
+    $('#prog-count').textContent = '0 / ' + r.total;
+    if (!r.headers) $('#prog-note').textContent =
+      'No header row found, so this was read positionally. Prices were not ' +
+      'imported as cost — nothing is treated as what you paid unless a column says so.';
+    poll();
+  } catch (err) {
+    $('#out').textContent = err.message || 'Could not read that paste.';
+    e.target.disabled = false;
+  }
+};
+
+async function poll() {
+  let s;
+  try { s = await api('/api/import/' + JOB); }
+  catch { return setTimeout(poll, 3000); }
+
+  if (s.state === 'failed') {
+    $('#step-progress').hidden = true;
+    $('#step-paste').hidden = false;
+    $('#out').textContent = 'Matching failed: ' + (s.error || 'unknown error');
+    return;
+  }
+  const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
+  $('#prog-fill').style.width = pct + '%';
+  $('#prog-count').textContent = s.done + ' / ' + s.total;
+
+  if (s.state === 'review' || s.state === 'done') return review(s);
+  setTimeout(poll, 1200);
+}
+
+function review(s) {
+  ROWS = s.rows;
+  $('#step-progress').hidden = true;
+  $('#step-review').hidden = false;
+
+  const c = s.counts, good = c.exact + c.set;
+  $('#rev-sum').textContent = `${ROWS.length} rows`;
+  $('#rev-counts').innerHTML = Object.entries(CONF).map(([k, [label, tone]]) =>
+    c[k] ? `<button class="imp-chip ${tone}" data-f="${k}">${label} <b class="num">${c[k]}</b></button>` : ''
+  ).join('') + `<button class="imp-chip" data-f="all">All <b class="num">${ROWS.length}</b></button>`;
+
+  if (ROWS.some(r => r.market != null) && !s.paid_column) $('#paid-ask').hidden = false;
+
+  document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => {
+    FILTER = b.dataset.f; draw();
+  });
+  document.querySelectorAll('[data-paid]').forEach(b => b.onclick = async () => {
+    await api('/api/import/' + JOB + '/paid-column', 'POST', {column: b.dataset.paid});
+    $('#paid-ask').hidden = true;
+    const s2 = await api('/api/import/' + JOB); ROWS = s2.rows; draw();
+    toast(b.dataset.paid === 'market' ? 'Using it as cost' : 'Left out of cost');
+  });
+  draw();
+  const graded = s.graded;
+  $('#commit-note').innerHTML =
+    `${good} of ${ROWS.length} matched a specific printing. ` +
+    `Rows marked <b>Not found</b> are skipped — nothing is guessed for them.` +
+    (graded ? `<br><b>${graded} graded card${graded > 1 ? 's' : ''}</b> will import with the ` +
+              `grade recorded but priced as raw. There is no free source of graded ` +
+              `prices yet, so treat those values as a floor.` : '');
+}
+
+function draw() {
+  const list = FILTER === 'all' ? ROWS : ROWS.filter(r => r.confidence === FILTER);
+  $('#rev-rows').innerHTML = list.map(r => {
+    const [label, tone, why] = CONF[r.confidence] || ['?', 'warn', ''];
+    const src = [r.set_name, r.number].filter(Boolean).join(' · ') || 'no set given';
+    const got = r.card_id
+      ? `${r.matched_name} — ${r.matched_set || ''} ${r.matched_number || ''}`.trim()
+      : '—';
+    const tags = [
+      r.grade   ? `<i class="imp-tag grade">${r.grade}</i>` : '',
+      r.region  ? `<i class="imp-tag region">${r.region.toUpperCase()}</i>` : '',
+      r.variant ? `<i class="imp-tag">${esc(r.variant)}</i>` : '',
+      r.finish && r.finish !== 'Normal' ? `<i class="imp-tag">${esc(r.finish)}</i>` : '',
+    ].join('');
+    return `<div class="imp-row ${r.skip ? 'off' : ''}" data-id="${r.id}">
+      <label class="imp-keep">
+        <input type="checkbox" ${r.skip || !r.card_id ? '' : 'checked'}
+               ${r.card_id ? '' : 'disabled'}>
+      </label>
+      <div class="imp-main">
+        <div class="imp-name">${esc(r.name)}${r.qty > 1 ? ` <span class="num">×${r.qty}</span>` : ''}</div>
+        <div class="imp-src">${esc(src)}</div>
+        <div class="imp-got">${r.card_id ? '→ ' + esc(got) : '<span class="imp-none">not attached</span>'}</div>
+        ${tags ? `<div class="imp-tags">${tags}</div>` : ''}
+        ${r.note ? `<div class="imp-note">${esc(r.note)}</div>` : ''}
+      </div>
+      <div class="imp-right">
+        <span class="imp-chip ${tone}" title="${esc(why)}">${label}</span>
+        ${r.price != null ? `<span class="num imp-price">£${r.price.toFixed(2)}</span>` : ''}
+        ${r.market != null ? `<span class="num imp-mkt">was £${r.market.toFixed(2)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('') || '<p class="hint" style="text-align:left">Nothing in this group.</p>';
+
+  $('#rev-rows').querySelectorAll('.imp-row input').forEach(cb => {
+    cb.onchange = async () => {
+      const el = cb.closest('.imp-row'), id = +el.dataset.id;
+      const skip = !cb.checked;
+      el.classList.toggle('off', skip);
+      const row = ROWS.find(r => r.id === id); if (row) row.skip = skip;
+      try { await api('/api/import/' + JOB + '/rows', 'PATCH', {rows: [{id, skip}]}); }
+      catch { toast('Could not save that'); }
+    };
+  });
+}
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"]/g,
+    ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+}
+
+$('#commit').onclick = async e => {
+  e.target.disabled = true;
+  try {
+    const r = await api('/api/import/' + JOB + '/commit', 'POST');
+    toast(`Added ${r.added} card${r.added === 1 ? '' : 's'}`);
+    setTimeout(() => location.href = '/cards', 900);
+  } catch (err) {
+    toast(err.message || 'Import failed');
+    e.target.disabled = false;
+  }
 };
 </script>
 {% endblock %}
