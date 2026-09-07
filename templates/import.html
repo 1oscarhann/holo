@@ -42,6 +42,14 @@ Charizard ex,Obsidian Flames,Double Rare,125/197,2,Near Mint,Holofoil,18.40"></t
   <div class="imp-filter" id="rev-filter"></div>
   <div class="imp-rows" id="rev-rows"></div>
 
+  <div class="imp-keepbox" id="keep-ask" hidden>
+    <b><span id="keep-n"></span> rows matched nothing</b>
+    <span>Chinese printings, Japanese cards with no English release, and cards
+      TCGdex has never carried. Keeping them records the name, set, number and
+      value so they still count — you set the price yourself.</span>
+    <div class="prow"><button class="btn ghost" id="keep-go">Keep them as manual entries</button></div>
+  </div>
+
   <div class="list-actions" style="margin-top:18px">
     <button class="btn" id="commit">Import the matched rows</button>
   </div>
@@ -124,6 +132,21 @@ function review(s) {
     const s2 = await api('/api/import/' + JOB); ROWS = s2.rows; draw();
     toast(b.dataset.paid === 'market' ? 'Using it as cost' : 'Left out of cost');
   });
+  const unmatched = ROWS.filter(r => !r.card_id && !r.skip).length;
+  if (unmatched) {
+    $('#keep-ask').hidden = false;
+    $('#keep-n').textContent = unmatched;
+    $('#keep-go').onclick = async e => {
+      e.target.disabled = true;
+      try {
+        const r = await api('/api/import/' + JOB + '/keep', 'POST', {});
+        toast(`Kept ${r.kept} as manual entries`);
+        const s2 = await api('/api/import/' + JOB); ROWS = s2.rows;
+        $('#keep-ask').hidden = true; draw();
+      } catch { toast('Could not keep those'); e.target.disabled = false; }
+    };
+  }
+
   draw();
   const graded = s.graded;
   $('#commit-note').innerHTML =

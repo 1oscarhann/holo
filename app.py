@@ -350,6 +350,14 @@ with raw_db() as c:
     # A graded sale is the only price signal nobody else has. Recording the
     # grade on the sale turns the sold log into a second source.
     c.execute("ALTER TABLE sales ADD COLUMN IF NOT EXISTS grade TEXT")
+    # v0.18: custom_items existed with an API and no UI. It is now the home for
+    # anything TCGdex cannot price — sealed product, and the import rows that
+    # deliberately refuse to attach to an English card (Chinese Gem Pack, JP
+    # printings with no English release). Those rows used to evaporate.
+    for col, typ in (("set_name", "TEXT"), ("number", "TEXT"), ("region", "TEXT"),
+                     ("variant", "TEXT"), ("grade", "TEXT"), ("condition", "TEXT"),
+                     ("finish", "TEXT"), ("image", "TEXT")):
+        c.execute(f"ALTER TABLE custom_items ADD COLUMN IF NOT EXISTS {col} {typ}")
 
 # ------------------------------------------------------------------------- auth
 
@@ -836,6 +844,30 @@ def holdings_with_prices(user_id, conn=None):
     return out
 
 
+def custom_with_values(user_id, conn=None):
+    """Manually tracked things: sealed product, and cards no API can price.
+
+    Shaped like a holding so the portfolio can treat both the same way. There
+    is no market price by definition, so `value` is whatever the owner said it
+    was and price_basis is always 'manual'.
+    """
+    c = conn or db()
+    rows = c.execute("""SELECT * FROM custom_items WHERE user_id=%s
+                        ORDER BY (value * qty) DESC NULLS LAST, id""", (user_id,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["qty"] = d.get("qty") or 1
+        d["price"] = d.get("value")
+        d["value"] = (d.get("value") or 0) * d["qty"]
+        d["price_basis"] = "manual"
+        d["custom"] = True
+        d["added"] = d["added"].isoformat() if d.get("added") else None
+        d["chg1"] = d["chg7"] = d["chg30"] = None
+        out.append(d)
+    return out
+
+
 def pct(now, then):
     if now is None or then in (None, 0):
         return None
@@ -857,17 +889,23 @@ def ensure_snapshot(user_id, conn=None, force=False):
                                (user_id, today)).fetchone():
         return
     hs = holdings_with_prices(user_id, c)
-    total = round(sum(h["value"] for h in hs), 2)
+    customs = custom_with_values(user_id, c)
+    total = round(sum(h["value"] for h in hs) + sum(x["value"] for x in customs), 2)
     c.execute("""INSERT INTO snapshots (user_id,day,total,cards) VALUES (%s,%s,%s,%s)
                  ON CONFLICT (user_id, day) DO UPDATE SET total=EXCLUDED.total, cards=EXCLUDED.cards""",
-              (user_id, today, total, sum(h["qty"] for h in hs)))
+              (user_id, today, total,
+               sum(h["qty"] for h in hs) + sum(x["qty"] for x in customs)))
     c.commit()
 
 
 def stats(user_id):
     hs = holdings_with_prices(user_id)
-    total = round(sum(h["value"] for h in hs), 2)
-    cost = round(sum((h["paid"] or 0) * h["qty"] for h in hs if h["paid"]), 2)
+    # Manually tracked things are part of the collection. Leaving them out is
+    # how a GBP200 card that TCGdex cannot price reads as nothing at all.
+    customs = custom_with_values(user_id)
+    total = round(sum(h["value"] for h in hs) + sum(x["value"] for x in customs), 2)
+    cost = round(sum((h["paid"] or 0) * h["qty"] for h in hs if h["paid"])
+                 + sum((x["paid"] or 0) * x["qty"] for x in customs if x["paid"]), 2)
     snaps = db().execute("SELECT day,total FROM snapshots WHERE user_id=%s ORDER BY day DESC LIMIT 90",
                          (user_id,)).fetchall()
     series = [{"day": s["day"].isoformat(), "total": s["total"]} for s in reversed(snaps)]
@@ -916,11 +954,14 @@ def stats(user_id):
         "ath": ath, "atl": atl,
         "drawdown": pct(total, ath["total"]) if ath else None,
         "pnl": {"abs": round(total - cost, 2), "pct": pct(total, cost)} if cost else None,
-        "cards": sum(h["qty"] for h in hs), "unique": len(hs),
+        "cards": sum(h["qty"] for h in hs) + sum(x["qty"] for x in customs),
+        "unique": len(hs) + len(customs), "customs": customs,
         "chg1": chg(1), "chg7": chg(7), "chg30": chg(30),
         "series": series, "sets": sets, "rarity": rarity,
         "top": hs[:5], "gainers": gainers, "losers": losers,
-        "avg_card": round(total / sum(h["qty"] for h in hs), 2) if hs else 0,
+        "avg_card": round(total / (sum(h["qty"] for h in hs)
+                                    + sum(x["qty"] for x in customs)), 2)
+                     if (hs or customs) else 0,
     }
 
 # ------------------------------------------------------------------------ pages
@@ -1624,6 +1665,7 @@ PAGES = {
     "/sets":      ("All sets",     "/market"),
     "/sold":      ("Sold",         "/profile"),
     "/import":    ("Import cards", "/profile"),
+    "/manual":    ("Manual entries", "/profile"),
     "/stats":     ("Admin",        "/profile"),
     "/compare":   ("Compare",      "/market"),
     "/add":       ("Add a card",   "/"),
@@ -2521,23 +2563,112 @@ def api_scan():
 # --------------------------------------------------------------- sealed / misc
 
 
-@app.route("/api/custom", methods=["POST", "DELETE"])
+@app.route("/manual")
+@login_required
+def manual_page():
+    """Everything Holo cannot price: sealed product, and cards no API carries."""
+    return render_template("manual.html", items=custom_with_values(uid()), page="you")
+
+
+def _custom_fields(d):
+    out = {}
+    for k in ("name", "kind", "note", "set_name", "number", "region",
+              "variant", "grade", "condition", "finish"):
+        if k in d:
+            v = (d.get(k) or "").strip() or None
+            out[k] = v
+    if "qty" in d:
+        try:
+            out["qty"] = max(1, int(d["qty"]))
+        except (TypeError, ValueError):
+            pass
+    for k in ("paid", "value"):
+        if k in d:
+            try:
+                out[k] = None if d[k] in (None, "") else round(float(d[k]), 2)
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
+@app.route("/api/custom", methods=["POST", "PATCH", "DELETE"])
 @login_required
 def api_custom():
     d = request.get_json(force=True) or {}
+
     if request.method == "DELETE":
         db().execute("DELETE FROM custom_items WHERE id=%s AND user_id=%s",
                      (d.get("id"), uid()))
         db().commit()
+        ensure_snapshot(uid(), db(), force=True)
+        db().commit()
         return jsonify(ok=True)
-    if not (d.get("name") or "").strip():
-        return jsonify(error="Name required"), 400
-    db().execute("""INSERT INTO custom_items (user_id,name,kind,qty,paid,value,note)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                 (uid(), d["name"].strip(), d.get("kind") or "sealed",
-                  int(d.get("qty") or 1), d.get("paid"), d.get("value"), d.get("note")))
+
+    if request.method == "PATCH":
+        iid = d.get("id")
+        own = db().execute("SELECT 1 FROM custom_items WHERE id=%s AND user_id=%s",
+                           (iid, uid())).fetchone()
+        if not own:
+            return jsonify(error="not yours"), 403
+        fields = _custom_fields(d)
+        for k, v in fields.items():
+            db().execute(f"UPDATE custom_items SET {k}=%s WHERE id=%s", (v, iid))
+        db().commit()
+        ensure_snapshot(uid(), db(), force=True)
+        db().commit()
+        return jsonify(ok=True)
+
+    fields = _custom_fields(d)
+    if not fields.get("name"):
+        return jsonify(error="Give it a name"), 400
+    cols = ["user_id"] + list(fields)
+    vals = [uid()] + [fields[k] for k in fields]
+    new_id = db().execute(
+        f"INSERT INTO custom_items ({','.join(cols)}) "
+        f"VALUES ({','.join(['%s'] * len(cols))}) RETURNING id", vals).fetchone()["id"]
     db().commit()
-    return jsonify(ok=True)
+    log_event("custom_added", item_kind=fields.get("kind"))
+    ensure_snapshot(uid(), db(), force=True)
+    db().commit()
+    return jsonify(ok=True, id=new_id)
+
+
+@app.route("/api/import/<int:job_id>/keep", methods=["POST"])
+@login_required
+def api_import_keep(job_id):
+    """Keep unmatched rows as manual entries instead of losing them.
+
+    Without this the honest "not found" is indistinguishable from deletion:
+    fourteen Chinese cards and the most valuable card in the collection would
+    be reported unmatched and then silently dropped on commit.
+    """
+    _job_or_404(job_id)
+    ids = (request.get_json(force=True) or {}).get("ids")
+    q = """SELECT * FROM import_rows WHERE job_id=%s AND card_id IS NULL AND skip=false"""
+    args = [job_id]
+    if ids:
+        q += " AND id = ANY(%s)"
+        args.append(list(ids))
+    rows = db().execute(q, args).fetchall()
+
+    kept = 0
+    for r in rows:
+        db().execute("""INSERT INTO custom_items
+            (user_id,name,kind,qty,paid,value,set_name,number,region,variant,
+             grade,condition,finish,note)
+            VALUES (%s,%s,'card',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (uid(), r["name"], r["qty"], r["paid"], r["market"], r["set_name"],
+             r["number"], r["region"], r["variant"], r["grade"], r["condition"],
+             r["finish"], "From import — no TCGdex match"))
+        db().execute("UPDATE import_rows SET skip=true, note=%s WHERE id=%s",
+                     ("Kept as a manual entry", r["id"]))
+        kept += 1
+    db().commit()
+    if kept:
+        ensure_snapshot(uid(), db(), force=True)
+        db().commit()
+    log_event("import_kept_manual", job=job_id, kept=kept)
+    return jsonify(ok=True, kept=kept)
 
 
 def log_event(kind, path=None, conn=None, **meta):
